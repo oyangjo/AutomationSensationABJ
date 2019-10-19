@@ -157,14 +157,14 @@ def main():
 
             # print transformation matrix
             print("\nTransformation Coordinates:")
-            print(T)
+            print(T[])
             print("\nActual Coordinates:")
             #print frame 1 with respect to frame 0
             print(vrep.simxGetObjectPosition(clientID, tcp_handle, armJoints[0], vrep.simx_opmode_streaming))
 
 
             # wait 10 seconds
-            time.sleep(10)
+            time.sleep(5)
 
         # will never happen
         time.sleep(5)
