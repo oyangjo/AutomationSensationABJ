@@ -68,7 +68,9 @@ def getT(theta):
     T = T.dot(M)
     return T
 
-
+"""
+    
+"""
 
 
 def main():
@@ -139,14 +141,18 @@ def main():
         # seed the random number generator
         seed(2)
         # init theta arr
-        theta = [0, 0, 0, 0, 0]
+        theta = [0, np.pi/4, 0, 0, 0]
 
         # loop forever (to test forward kinematic calculations)
         while True:
-
-            # generate random angles
+            # move arm to zero location
             for i in range (5):
-                theta[i] = random()
+                vrep.simxSetJointPosition(clientID, armJoints[i], theta[i], vrep.simx_opmode_streaming)
+        
+            
+            # generate random angles
+            #for i in range (5):
+                #theta[i] = random()
 
             # move arm to some location
             for i in range (5):
@@ -157,7 +163,8 @@ def main():
 
             # print transformation matrix
             print("\nTransformation Coordinates:")
-            print(T[])
+            print(T)
+            
             print("\nActual Coordinates:")
             #print frame 1 with respect to frame 0
             print(vrep.simxGetObjectPosition(clientID, tcp_handle, armJoints[0], vrep.simx_opmode_streaming))

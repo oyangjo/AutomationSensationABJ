@@ -51,7 +51,7 @@ S1 = np.array([
 # S of Joint 2
 S2 = np.array([
                 [0],
-                [-1],
+                [1],
                 [0],
                 [0],
                 [0],
@@ -60,7 +60,7 @@ S2 = np.array([
 # S of Joint 3
 S3 = np.array([
                 [0],
-                [-1],
+                [1],
                 [0],
                 [0],
                 [0],
@@ -69,7 +69,7 @@ S3 = np.array([
 # S of Joint 4
 S4 = np.array([
                 [0],
-                [-1],
+                [1],
                 [0],
                 [0],
                 [0],
