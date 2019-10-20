@@ -21,3 +21,11 @@ The child script of the YouBot functions primarily through a keylistener. When a
 #Proximity_sensor
 	The robot uses a Vrep proximity_sensor object of type ray to simulate a lidar sensor. Using the object script, we can output the measurements to the user. 
 Moving forward, our goal is to output the measurements to ROS to minimize roll of simulator and use ROS packages for motion planning.
+
+#Forward Kinematics
+This robot uses forward kinematics to calculate the (X,Y,Z) coordinates of the end effector of its arm. The data for the calculations is located in transformation_data.py. 
+
+#Using VREP remotely through Python
+Vrep Python API:
+http://www.coppeliarobotics.com/helpFiles/en/remoteApiFunctionsPython.htm
+Only edit roboProj.py, and/or helper files.
