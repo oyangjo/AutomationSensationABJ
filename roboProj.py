@@ -17,6 +17,8 @@ Created on Fri Oct 11 14:11:53 2019
 # should be a corresponding call to simxFinish at the end!
 import time
 import numpy as np
+import modern_robotics as mr
+
 from scipy.linalg import expm
 
 # transformation_data.py holds all forward kinematic variables
@@ -138,21 +140,20 @@ def main():
         # gets handle for TCP - used in printing comparison
         e, tcp_handle = vrep.simxGetObjectHandle(clientID, 'youBotGripperJoint1', vrep.simx_opmode_oneshot_wait)
 
-        # seed the random number generator
-        seed(2)
-        # init theta arr
-        theta = [0, np.pi/4, 0, 0, 0]
 
-        # loop forever (to test forward kinematic calculations)
-        while True:
-            # move arm to zero location
-            for i in range (5):
-                vrep.simxSetJointPosition(clientID, armJoints[i], theta[i], vrep.simx_opmode_streaming)
-        
-            
-            # generate random angles
-            #for i in range (5):
-                #theta[i] = random()
+        # init theta arr
+        theta = [0, 0, 0, 0, 0]
+        for j in range (6):
+            if(j == 1):
+                theta = [np.pi/4, 0, 0, 0, 0]
+            elif(j == 2):
+                theta = [0, np.pi/4, 0, 0, 0]
+            elif(j == 3):
+                theta = [0, 0, np.pi/4, 0, 0]
+            elif(j == 4):
+                theta = [0, 0, 0, np.pi/4, 0]
+            elif(j == 5):
+                theta = [0, 0, 0, 0, np.pi/4]
 
             # move arm to some location
             for i in range (5):
@@ -164,16 +165,12 @@ def main():
             # print transformation matrix
             print("\nTransformation Coordinates:")
             print(T)
-            
-            print("\nActual Coordinates:")
-            #print frame 1 with respect to frame 0
-            print(vrep.simxGetObjectPosition(clientID, tcp_handle, armJoints[0], vrep.simx_opmode_streaming))
+            print("\n")
 
+            #wait until keypress
+            input("Press Enter to continue...")
+    
 
-            # wait 10 seconds
-            time.sleep(5)
-
-        # will never happen
         time.sleep(5)
 
         # Now close the connection to V-REP:
