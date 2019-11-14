@@ -35,11 +35,11 @@ function getT(theta):
 def getT(theta):
     # get data from transformation_data.py
     M  = transformation_data.M
-    S1 = transformation_data.S1
-    S2 = transformation_data.S2
-    S3 = transformation_data.S3
-    S4 = transformation_data.S4
-    S5 = transformation_data.S5
+    S1 = transformation_data.S0
+    S2 = transformation_data.S1
+    S3 = transformation_data.S2
+    S4 = transformation_data.S3
+    S5 = transformation_data.S4
 
     # print original frame
     #print(M)
@@ -62,7 +62,7 @@ def getT(theta):
             [-w2,   w1,     0,      v3],
             [0,     0,      0,      0]])
         # chain the matrix multiplication
-        T = T.dot( expm(S_brac * theta[i]) )
+        T = T.dot(expm(S_brac * theta[i]))
 
     # finally, multiply by M
     T = T.dot(M)
@@ -141,7 +141,7 @@ def main():
         # seed the random number generator
         seed(2)
         # init theta arr
-        theta = [0, np.pi/4, 0, 0, 0]
+        theta = [0, 0, 0, np.pi/4, 0]
 
         # loop forever (to test forward kinematic calculations)
         while True:
@@ -167,7 +167,9 @@ def main():
             
             print("\nActual Coordinates:")
             #print frame 1 with respect to frame 0
-            print(vrep.simxGetObjectPosition(clientID, tcp_handle, armJoints[0], vrep.simx_opmode_streaming))
+            e,pose = vrep.simxGetObjectPosition(clientID, tcp_handle, armJoints[0], vrep.simx_opmode_streaming)
+            pose[1] -= 0.0344
+            print(pose)
 
 
             # wait 10 seconds
