@@ -82,3 +82,6 @@ S5 = np.array([
                 [0],
                 [0],
                 [0]])
+
+# S matrix
+S = np.concatenate((S1, S2, S3, S4, S5), axis=1)

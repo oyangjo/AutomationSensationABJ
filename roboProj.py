@@ -76,6 +76,9 @@ def getT(theta):
 
 
 def main():
+    M  = transformation_data.M
+    S  = transformation_data.S
+
     try:
         import vrep
     except:
@@ -159,13 +162,23 @@ def main():
             for i in range (5):
                 vrep.simxSetJointPosition(clientID, armJoints[i], theta[i], vrep.simx_opmode_streaming)
 
-            # get transformation matrix
+            # get forward kinematics
             T = getT(theta)
 
-            # print transformation matrix
-            print("\nTransformation Coordinates:")
-            print(T)
+            # print forward kinematics
+            print("\nForward Kinematics:")
+            #print(T)
+            print(mr.FKinSpace(M, S, theta))
             print("\n")
+
+            # get inverse kinematics
+            [thetalist, success] = mr.IKinSpace(S, M, T, [0, 0, 0, 0, 0], 0.1, 0.1)
+
+            # print inverse kinematics
+            print("\nInverse Kinematics:\n")
+            print(str(thetalist))
+            print("\n")
+            print(str(theta)+ "\n")
 
             #wait until keypress
             input("Press Enter to continue...")
