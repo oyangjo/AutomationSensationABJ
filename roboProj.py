@@ -168,7 +168,6 @@ def main():
             print("\nActual Coordinates:")
             #print frame 1 with respect to frame 0
             e,pose = vrep.simxGetObjectPosition(clientID, tcp_handle, armJoints[0], vrep.simx_opmode_streaming)
-            pose[1] -= 0.0344
             print(pose)
 
 
