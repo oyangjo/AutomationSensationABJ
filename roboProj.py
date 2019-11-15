@@ -176,13 +176,13 @@ def main():
             print("\n")
 
             # get inverse kinematics
-            [thetalist, success] = mr.IKinSpace(S, M, T, [0, 0, 0, 0, 0], 0.1, 0.1)
+            [thetalist, success] = mr.IKinSpace(S, M, T, theta, 0.1, 0.1)
 
             # print inverse kinematics
-            print("\nInverse Kinematics:\n")
+            print("\nCalculated Inverse Kinematics:\n")
             print(str(thetalist))
             print("\n")
-            print(str(theta)+ "\n")
+            print("\nReal Thetas:\n" + str(theta)+ "\n")
 
             #wait until keypress
             input("Press Enter to continue...")
