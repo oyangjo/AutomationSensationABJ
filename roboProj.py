@@ -3,6 +3,10 @@
 Created on Fri Oct 11 14:11:53 2019
 
 @author: BenSisserman
+
+
+SOURCE: https://github.com/NxRLab/ModernRobotics
+
 """
 
 # Make sure to have the server side running in V-REP: 
