@@ -23,6 +23,19 @@ import time
 import numpy as np
 import modern_robotics as mr
 
+try:
+    import vrep
+except:
+    print ('--------------------------------------------------------------')
+    print ('"vrep.py" could not be imported. This means very probably that')
+    print ('either "vrep.py" or the remoteApi library could not be found.')
+    print ('Make sure both are in the same folder as this file,')
+    print ('or appropriately adjust the file "vrep.py"')
+    print ('--------------------------------------------------------------')
+    print ('')
+
+
+
 from scipy.linalg import expm
 
 # transformation_data.py holds all forward kinematic variables
@@ -31,6 +44,47 @@ import transformation_data
 # for random number generation
 from random import seed
 from random import random
+
+armJoints = [0,0,0,0,0]
+wheels = [0,0,0,0]
+clientID = 0
+MAX_FORCE = 25
+
+def moveArmPose(end_pose):
+
+    M  = transformation_data.M
+    S  = transformation_data.S
+
+    guess = [0, 0, 0, 0, 0]
+    # get desired angles from end_pose
+    [thetalist, success] = mr.IKinSpace(S, M, end_pose, guess, 0.1, 0.1)
+
+    moveArm(thetalist)
+
+def moveArm(thetalist):
+    global clientID
+    global armJoints
+    time_between_movements = .2
+    error = .05
+
+    joint_movement_order = [0, 4, 1, 2, 3]
+    for i in joint_movement_order:
+        [e, curr_theta] = vrep.simxGetJointPosition(clientID, armJoints[i], vrep.simx_opmode_streaming)
+        goal_theta = thetalist[i]
+        step = (goal_theta - curr_theta) / 10
+        for j in range(9):
+            vrep.simxSetJointPosition(clientID, armJoints[i], step*j + curr_theta, vrep.simx_opmode_streaming)
+            time.sleep(.01)
+        vrep.simxSetJointPosition(clientID, armJoints[i], goal_theta, vrep.simx_opmode_streaming)
+
+def moveWheels(fl, fr, bl, br):
+    global wheels
+    #moves the wheels
+    e1 = vrep.simxSetJointTargetVelocity(clientID, wheels[0], fl, vrep.simx_opmode_streaming)
+    e2 = vrep.simxSetJointTargetVelocity(clientID, wheels[1], fr, vrep.simx_opmode_streaming)
+    e3 = vrep.simxSetJointTargetVelocity(clientID, wheels[2], bl, vrep.simx_opmode_streaming)
+    e4 = vrep.simxSetJointTargetVelocity(clientID, wheels[3], br, vrep.simx_opmode_streaming)
+    return [e1, e2, e3, e4]
 
 '''
 function getT(theta):
@@ -80,19 +134,18 @@ def getT(theta):
 
 
 def main():
+    global velocity
+    global armJoints
+    global wheels
+    global MAX_FORCE
+
     M  = transformation_data.M
     S  = transformation_data.S
+    zero_pose = transformation_data.zero_pose
+    plate_pose = transformation_data.plate_pose
+    front_pose = transformation_data.front_pose
 
-    try:
-        import vrep
-    except:
-        print ('--------------------------------------------------------------')
-        print ('"vrep.py" could not be imported. This means very probably that')
-        print ('either "vrep.py" or the remoteApi library could not be found.')
-        print ('Make sure both are in the same folder as this file,')
-        print ('or appropriately adjust the file "vrep.py"')
-        print ('--------------------------------------------------------------')
-        print ('')
+
 
 
     print ('Program started')
@@ -103,47 +156,30 @@ def main():
         
 
         # initialize wheel motors
-        wheels = [0,0,0,0]
         e1,wheels[0] = vrep.simxGetObjectHandle(clientID, 'rollingJoint_fl', vrep.simx_opmode_oneshot_wait)
         e2,wheels[1] = vrep.simxGetObjectHandle(clientID, 'rollingJoint_rl', vrep.simx_opmode_oneshot_wait)
         e3,wheels[2] = vrep.simxGetObjectHandle(clientID, 'rollingJoint_rr', vrep.simx_opmode_oneshot_wait)
         e4,wheels[3] = vrep.simxGetObjectHandle(clientID, 'rollingJoint_fr', vrep.simx_opmode_oneshot_wait)
 
         #initialize arm motors
-        armJoints = [0,0,0,0,0]
         arm_poses = [0,0,0,0,0]
+        
         for i in range(5):
             e, armJoints[i] = vrep.simxGetObjectHandle(clientID, 'youBotArmJoint' + str(i), vrep.simx_opmode_oneshot_wait)
-
+            vrep.simxSetJointForce(clientID, armJoints[i], MAX_FORCE, vrep.simx_opmode_oneshot_wait)
         
+        while(1):
+            moveArm(plate_pose)
+            time.sleep(2)
+            moveArm(front_pose)
+            time.sleep(2)
+            #print(str(i) + "th Joint: " + str(curr_theta))
         '''
-        #moves the wheels
-        e5 = vrep.simxSetJointTargetVelocity(clientID, wheels[0], 300, vrep.simx_opmode_streaming)
-        e5 = vrep.simxSetJointTargetVelocity(clientID, wheels[1], 300, vrep.simx_opmode_streaming)
-        e5 = vrep.simxSetJointTargetVelocity(clientID, wheels[2], 300, vrep.simx_opmode_streaming)
-        e5 = vrep.simxSetJointTargetVelocity(clientID, wheels[3], 300, vrep.simx_opmode_streaming)
-        '''
 
 
-        '''
-        TO DO:
+        # move arm to 0 position
+        moveArm(zero_pose)
 
-        -CALCULATE INVERSE KINEMATIC MATRIX
-        -WRITE FUNCTION TO CALCULATE MATRIX EXPONENTIAL
-        -IT WILL RETURN X,Y COORDINATES GIVEN THETA
-        -PRINT THOSE COORDINATES 
-
-        -INVERSE KINEMATICS WILL SUIT OUR PROJECT BETTER
-        -BECAUSE WE ARE TRYING TO LOCATE A BLOCK AND 
-        -PICK IT UP. WE NEED ANGLE MEASUREMENTS
-        -GIVEN COORDINATES, THE EXACT OPPOSITE OF 
-        -WHAT WE'RE DOING NOW
-
-        -STUFF TO RESEARCH:
-        -WAYS TO LOCALIZE ROBOT
-        -DETECT OBJECTS (using camera)
-
-        '''
         # gets handle for TCP - used in printing comparison
         e, tcp_handle = vrep.simxGetObjectHandle(clientID, 'youBotGripperJoint1', vrep.simx_opmode_oneshot_wait)
 
@@ -163,14 +199,13 @@ def main():
                 theta = [0, 0, 0, 0, np.pi/4]
 
             # move arm to some location
-            for i in range (5):
-                vrep.simxSetJointPosition(clientID, armJoints[i], theta[i], vrep.simx_opmode_streaming)
+            moveArm(theta)
 
             # get forward kinematics
             T = getT(theta)
 
             # print forward kinematics
-            print("\nForward Kinematics:")
+            print("\nCalculated Forward Kinematics:")
             #print(T)
             print(mr.FKinSpace(M, S, theta))
             print("\n")
@@ -186,17 +221,15 @@ def main():
 
             #wait until keypress
             input("Press Enter to continue...")
-    
+        
 
-        time.sleep(5)
-
+        time.sleep(1)
+        '''
         # Now close the connection to V-REP:
         vrep.simxFinish(clientID)
     else:
         print ('Failed connecting to remote API server')
     print ('Program ended')
-
-
 
 
 

@@ -111,3 +111,11 @@ S5 = np.array([
 
 # S matrix
 S = np.concatenate((S1, S2, S3, S4, S5), axis=1)
+
+
+zero_pose = [0, 0, 0, 0, 0]
+
+plate_pose = np.radians([0, 30.9, 52.4, 72.7, 0])
+
+
+front_pose = np.radians([0, -30.4, -45.6, -76.5, 0])
