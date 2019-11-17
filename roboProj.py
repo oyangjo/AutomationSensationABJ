@@ -49,7 +49,7 @@ armJoints = [0,0,0,0,0]
 wheels = [0,0,0,0]
 clientID = 0
 MAX_FORCE = 25
-
+tcp_handle = ''
 def moveArmPose(end_pose):
 
     M  = transformation_data.M
@@ -77,8 +77,18 @@ def moveArm(thetalist):
             time.sleep(.01)
         vrep.simxSetJointPosition(clientID, armJoints[i], goal_theta, vrep.simx_opmode_streaming)
 
+def grab():
+    global clientID
+    sig = vrep.simxSetIntSignal(clientID, "youBotGripperState", 0, vrep.simx_opmode_buffer)
+    print(sig)
+
+def release():
+    global clientID
+    vrep.simxSetIntSignal(clientID, "youBotGripperState", 1, vrep.simx_opmode_buffer)
+
 def moveWheels(fl, fr, bl, br):
     global wheels
+    global clientID
     #moves the wheels
     e1 = vrep.simxSetJointTargetVelocity(clientID, wheels[0], fl, vrep.simx_opmode_streaming)
     e2 = vrep.simxSetJointTargetVelocity(clientID, wheels[1], fr, vrep.simx_opmode_streaming)
@@ -128,61 +138,84 @@ def getT(theta):
     T = T.dot(M)
     return T
 
+# this doesn't work. Tried converting by subtraction
+def convertToBodyCoordinatesFromSpaceCoordinates(x, y, z):
+    #[0.6336228847503662, -0.0013938546180725098, 0.19836857914924622]
+    x_offset = 0.6336228847503662
+    y_offset = -0.0013938546180725098
+    z_offset = 0.19836857914924622
+    return (x + x_offset, y + y_offset, z + z_offset)
 """
     
 """
 
 
 def main():
+    # global variables
     global velocity
     global armJoints
     global wheels
     global MAX_FORCE
-
+    global tcp_handle
+    # get transformation data
     M  = transformation_data.M
     S  = transformation_data.S
+    T_b_s = transformation_data.T_b_s
     zero_pose = transformation_data.zero_pose
     plate_pose = transformation_data.plate_pose
     front_pose = transformation_data.front_pose
 
-
-
-
+    # VREP stuff
     print ('Program started')
     vrep.simxFinish(-1) # just in case, close all opened connections
     clientID=vrep.simxStart('127.0.0.1',19999,True,True,5000,5) # Connect to V-REP
     if clientID!=-1:
         print ('Connected to remote API server')
         
-
         # initialize wheel motors
         e1,wheels[0] = vrep.simxGetObjectHandle(clientID, 'rollingJoint_fl', vrep.simx_opmode_oneshot_wait)
         e2,wheels[1] = vrep.simxGetObjectHandle(clientID, 'rollingJoint_rl', vrep.simx_opmode_oneshot_wait)
         e3,wheels[2] = vrep.simxGetObjectHandle(clientID, 'rollingJoint_rr', vrep.simx_opmode_oneshot_wait)
         e4,wheels[3] = vrep.simxGetObjectHandle(clientID, 'rollingJoint_fr', vrep.simx_opmode_oneshot_wait)
 
-        #initialize arm motors
+        #initialize arm joints
         arm_poses = [0,0,0,0,0]
-        
         for i in range(5):
+            # get object handle
             e, armJoints[i] = vrep.simxGetObjectHandle(clientID, 'youBotArmJoint' + str(i), vrep.simx_opmode_oneshot_wait)
+            # set max force
             vrep.simxSetJointForce(clientID, armJoints[i], MAX_FORCE, vrep.simx_opmode_oneshot_wait)
-        
+        # gets handle for TCP - used in printing comparison
+        e, tcp_handle = vrep.simxGetObjectHandle(clientID, 'youBotGripperJoint1', vrep.simx_opmode_oneshot_wait)
+        e, body_handle = vrep.simxGetObjectHandle(clientID, 'youBot', vrep.simx_opmode_oneshot_wait)
+        #TESTING if we can move the arm between two poses
+        '''
         while(1):
             moveArm(plate_pose)
-            time.sleep(2)
+            #grab()
+            time.sleep(1)
             moveArm(front_pose)
+            #release()
+            time.sleep(1)
+        '''
+
+        #testing body frame conversion. doesn't work
+        while True:
+            moveArm(zero_pose)
+            code, pos = vrep.simxGetObjectPosition(clientID, tcp_handle, armJoints[0], vrep.simx_opmode_streaming)
+            print(pos)
+            print( convertToBodyCoordinatesFromSpaceCoordinates(pos[0], pos[1], pos[2]))
+
+
             time.sleep(2)
-            #print(str(i) + "th Joint: " + str(curr_theta))
+
         '''
 
 
         # move arm to 0 position
         moveArm(zero_pose)
 
-        # gets handle for TCP - used in printing comparison
-        e, tcp_handle = vrep.simxGetObjectHandle(clientID, 'youBotGripperJoint1', vrep.simx_opmode_oneshot_wait)
-
+        
 
         # init theta arr
         theta = [0, 0, 0, 0, 0]

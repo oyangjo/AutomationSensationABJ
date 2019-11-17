@@ -113,6 +113,29 @@ S5 = np.array([
 S = np.concatenate((S1, S2, S3, S4, S5), axis=1)
 
 
+
+
+# Transformation matrix (from base coordinates to body frame coordinates):
+#end-effector coordinates in robot body frame coordinates:
+T_e_b = np.array([
+        [1,     0,  0,   0.6336122155189514   ],
+        [0,     1,  0,   -0.001332700252532959],
+        [0,     0,  1,   0.19687017798423767  ],
+        [0,     0,  0,   1                    ]])
+
+#end-effector coordinates in space coordinates:
+T_e_s = np.array([
+    [ 1,      0,      0,     -0.0357],
+    [ 0,      1,      0,      0.    ],
+    [ 0,      0,      1,      0.5847],
+    [ 0,      0,      0,      1.    ]])
+
+# we want space coordinates relative to base coordinates,
+# so T_b_s = T_b_e * T_e_s = T_e_b^-1 * T_e_s
+T_b_s = np.linalg.inv(T_e_b) * T_e_s
+
+
+
 zero_pose = [0, 0, 0, 0, 0]
 
 plate_pose = np.radians([0, 30.9, 52.4, 72.7, 0])
