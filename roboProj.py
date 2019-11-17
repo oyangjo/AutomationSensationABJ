@@ -40,6 +40,7 @@ from scipy.linalg import expm
 
 # transformation_data.py holds all forward kinematic variables
 import transformation_data
+import vrep
 
 # for random number generation
 from random import seed
@@ -54,10 +55,15 @@ def moveArmPose(end_pose):
 
     M  = transformation_data.M
     S  = transformation_data.S
+    
+    T_d  = np.array([[1, 0, 0, end_pose[0]],
+                     [0, 1, 0, end_pose[1]],
+                     [0, 0, 1, end_pose[2]],
+                     [0,0,0,1]]) 
 
     guess = [0, 0, 0, 0, 0]
     # get desired angles from end_pose
-    [thetalist, success] = mr.IKinSpace(S, M, end_pose, guess, 0.1, 0.1)
+    [thetalist, success] = mr.IKinSpace(S, M, T_d, guess, 0.1, 0.1)
 
     moveArm(thetalist)
 
@@ -105,11 +111,11 @@ function getT(theta):
 def getT(theta):
     # get data from transformation_data.py
     M  = transformation_data.M
-    S1 = transformation_data.S1
-    S2 = transformation_data.S2
-    S3 = transformation_data.S3
-    S4 = transformation_data.S4
-    S5 = transformation_data.S5
+    S1 = transformation_data.S0
+    S2 = transformation_data.S1
+    S3 = transformation_data.S2
+    S4 = transformation_data.S3
+    S5 = transformation_data.S4
 
     # print original frame
     #print(M)
@@ -132,7 +138,7 @@ def getT(theta):
             [-w2,   w1,     0,      v3],
             [0,     0,      0,      0]])
         # chain the matrix multiplication
-        T = T.dot( expm(S_brac * theta[i]) )
+        T = T.dot(expm(S_brac * theta[i]))
 
     # finally, multiply by M
     T = T.dot(M)
@@ -145,8 +151,52 @@ def convertToBodyCoordinatesFromSpaceCoordinates(x, y, z):
     y_offset = -0.0013938546180725098
     z_offset = 0.19836857914924622
     return (x + x_offset, y + y_offset, z + z_offset)
-"""
+
+'''
+    Function communicates with vrep to retrieve data on detected objects, transforms to body coordinates
+    and returns yaw and pose
+'''
+def detectCube(clientID,proxSensor,bodyHandle):
+    e,prox_body_p = vrep.simxGetObjectPosition(clientID, proxSensor, bodyHandle, vrep.simx_opmode_streaming)
+    print("prox_body_p = " + str(prox_body_p))
+    T_body_sensor = np.array([[0, -1, 0, prox_body_p[0]], 
+                          [1, 0, 0,  prox_body_p[1]],
+                          [0, 0, 1,  prox_body_p[2]],
+                          [0,0,0,1]])
+
+    e,detectionState,detectedPoint,detectedObjectHandle,detectedSurfaceNormalVector=vrep.simxReadProximitySensor(clientID,proxSensor,vrep.simx_opmode_streaming)
+    #print("State: " + str(detectionState))
+    #print("Point: " + str(detectedPoint))
+    #print("Norm Vector: " + str(detectedSurfaceNormalVector))
     
+    # calculate yaw from -45 to 45 degrees
+    yaw = 0
+    if(detectedSurfaceNormalVector[1] != 0):
+        yaw = np.arctan2(detectedSurfaceNormalVector[0], detectedSurfaceNormalVector[2])
+        yaw = yaw*180/np.pi
+        if(yaw > 45 and yaw < 135):
+            yaw -= 90
+        elif(yaw < -45 and yaw > -135):
+            yaw += 90
+        elif(yaw > 135):
+            yaw -= 180
+        elif(yaw < -135):
+            yaw += 180
+        #detectedPoint[1] += 0.02
+        #detectedPoint[0] += 0.02*np.sin(yaw)
+        #detectedPoint[2] += 0.02*np.cos(yaw)
+            
+    e,detect_pose = vrep.simxGetObjectPosition(clientID, detectedObjectHandle, proxSensor, vrep.simx_opmode_streaming)
+    
+    pose = np.array([[detect_pose[0]], [detect_pose[1]], [detect_pose[2]], [1]])
+    body_pose = np.dot(T_body_sensor,pose)
+    cube_pose = [body_pose[0][0], body_pose[1][0], body_pose[2][0]]
+    
+    return detectionState,yaw,cube_pose 
+
+
+"""
+
 """
 
 
@@ -172,6 +222,10 @@ def main():
     if clientID!=-1:
         print ('Connected to remote API server')
         
+        e, bodyHandle = vrep.simxGetObjectHandle(clientID, "youBot", vrep.simx_opmode_blocking)
+        e, cubeHandle = vrep.simxGetObjectHandle(clientID, "Rectangle16", vrep.simx_opmode_blocking)
+        e, proxSensor = vrep.simxGetObjectHandle(clientID, "Proximity_sensor", vrep.simx_opmode_blocking)
+        
         # initialize wheel motors
         e1,wheels[0] = vrep.simxGetObjectHandle(clientID, 'rollingJoint_fl', vrep.simx_opmode_oneshot_wait)
         e2,wheels[1] = vrep.simxGetObjectHandle(clientID, 'rollingJoint_rl', vrep.simx_opmode_oneshot_wait)
@@ -187,7 +241,6 @@ def main():
             vrep.simxSetJointForce(clientID, armJoints[i], MAX_FORCE, vrep.simx_opmode_oneshot_wait)
         # gets handle for TCP - used in printing comparison
         e, tcp_handle = vrep.simxGetObjectHandle(clientID, 'youBotGripperJoint1', vrep.simx_opmode_oneshot_wait)
-        e, body_handle = vrep.simxGetObjectHandle(clientID, 'youBot', vrep.simx_opmode_oneshot_wait)
         #TESTING if we can move the arm between two poses
         '''
         while(1):
@@ -202,12 +255,20 @@ def main():
         #testing body frame conversion. doesn't work
         while True:
             moveArm(zero_pose)
+            
+            '''
             code, pos = vrep.simxGetObjectPosition(clientID, tcp_handle, armJoints[0], vrep.simx_opmode_streaming)
             print(pos)
-            print( convertToBodyCoordinatesFromSpaceCoordinates(pos[0], pos[1], pos[2]))
-
+            print(convertToBodyCoordinatesFromSpaceCoordinates(pos[0], pos[1], pos[2]))
+            '''
 
             time.sleep(2)
+            
+            detect, yaw, cubePose = detectCube(clientID,proxSensor,bodyHandle)
+            
+            if(detect):
+                moveArmPose(cubePose)
+                time.sleep(5)
 
         '''
 

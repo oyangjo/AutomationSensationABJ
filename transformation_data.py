@@ -32,11 +32,12 @@ Z2 -= Z1
 Z1 -= Z1
 
 # Create Matrix M
+# with respect to joint0, using object youBotArmJoint0.ME_Arm1_m0_sub0_sub0
 M = np.array([
-                [1, 0, 0,     x_offset],
-                [0, 1, 0,     0],
+                [1, 0, 0, x_offset],
+                [0, 1, 0, 0],
                 [0, 0, 1, Z_TCP],
-                [0, 0, 0,     1]])
+                [0, 0, 0, 1]])
 
 # Create S vectors
     # first 3 entries are w: axis of rotation
