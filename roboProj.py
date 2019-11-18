@@ -56,16 +56,23 @@ def moveArmPose(end_pose):
     M  = transformation_data.M
     S  = transformation_data.S
     
-    T_d  = np.array([[1, 0, 0, end_pose[0]],
-                     [0, 1, 0, end_pose[1]],
-                     [0, 0, 1, end_pose[2]],
+    T_d  = np.array([[0, -0.462, -0.89, end_pose[0]],
+                     [1, 0, 0, end_pose[1]],
+                     [0, -0.89, 0.46, end_pose[2]],
                      [0,0,0,1]]) 
 
-    guess = [0, 0, 0, 0, 0]
+    #guess = [0, 0, 0, 0, 0]
     # get desired angles from end_pose
-    [thetalist, success] = mr.IKinSpace(S, M, T_d, guess, 0.1, 0.1)
-
-    moveArm(thetalist)
+    [thetalist, success] = mr.IKinSpace(S, M, T_d, transformation_data.front_pose, 0.1, 0.1)
+    
+    for i in range(len(thetalist)):
+        thetalist[i] = thetalist[i]*180/np.pi
+    
+    #print(success)
+    #print(thetalist)
+    if(success):
+        moveArm(thetalist)
+    return success,thetalist
 
 def moveArm(thetalist):
     global clientID
@@ -82,6 +89,12 @@ def moveArm(thetalist):
             vrep.simxSetJointPosition(clientID, armJoints[i], step*j + curr_theta, vrep.simx_opmode_streaming)
             time.sleep(.01)
         vrep.simxSetJointPosition(clientID, armJoints[i], goal_theta, vrep.simx_opmode_streaming)
+
+def getPoseFromJoints(thetas):
+    M = transformation_data.M
+    S = transformation_data.S
+    T_pose = mr.FKinSpace(M,S,thetas)
+    return T_pose
 
 def grab():
     global clientID
@@ -158,11 +171,11 @@ def convertToBodyCoordinatesFromSpaceCoordinates(x, y, z):
 '''
 def detectCube(clientID,proxSensor,bodyHandle):
     e,prox_body_p = vrep.simxGetObjectPosition(clientID, proxSensor, bodyHandle, vrep.simx_opmode_streaming)
-    print("prox_body_p = " + str(prox_body_p))
+    #print("prox_body_p = " + str(prox_body_p))
     T_body_sensor = np.array([[0, -1, 0, prox_body_p[0]], 
-                          [1, 0, 0,  prox_body_p[1]],
-                          [0, 0, 1,  prox_body_p[2]],
-                          [0,0,0,1]])
+                              [1, 0, 0,  prox_body_p[1]],
+                              [0, 0, 1,  prox_body_p[2]],
+                              [0,0,0,1]])
 
     e,detectionState,detectedPoint,detectedObjectHandle,detectedSurfaceNormalVector=vrep.simxReadProximitySensor(clientID,proxSensor,vrep.simx_opmode_streaming)
     #print("State: " + str(detectionState))
@@ -222,6 +235,8 @@ def main():
     if clientID!=-1:
         print ('Connected to remote API server')
         
+         # gets handle for TCP - used in printing comparison
+        e, tcp_handle = vrep.simxGetObjectHandle(clientID, 'youBotGripperJoint1', vrep.simx_opmode_oneshot_wait)
         e, bodyHandle = vrep.simxGetObjectHandle(clientID, "youBot", vrep.simx_opmode_blocking)
         e, cubeHandle = vrep.simxGetObjectHandle(clientID, "Rectangle16", vrep.simx_opmode_blocking)
         e, proxSensor = vrep.simxGetObjectHandle(clientID, "Proximity_sensor", vrep.simx_opmode_blocking)
@@ -239,8 +254,7 @@ def main():
             e, armJoints[i] = vrep.simxGetObjectHandle(clientID, 'youBotArmJoint' + str(i), vrep.simx_opmode_oneshot_wait)
             # set max force
             vrep.simxSetJointForce(clientID, armJoints[i], MAX_FORCE, vrep.simx_opmode_oneshot_wait)
-        # gets handle for TCP - used in printing comparison
-        e, tcp_handle = vrep.simxGetObjectHandle(clientID, 'youBotGripperJoint1', vrep.simx_opmode_oneshot_wait)
+       
         #TESTING if we can move the arm between two poses
         '''
         while(1):
@@ -254,22 +268,27 @@ def main():
 
         #testing body frame conversion. doesn't work
         while True:
-            moveArm(zero_pose)
+            #moveArm(zero_pose)
+            #print("zero pose: " + str(getPoseFromJoints(zero_pose)))
+            #time.sleep(1)
             
-            '''
-            code, pos = vrep.simxGetObjectPosition(clientID, tcp_handle, armJoints[0], vrep.simx_opmode_streaming)
-            print(pos)
-            print(convertToBodyCoordinatesFromSpaceCoordinates(pos[0], pos[1], pos[2]))
-            '''
-
+            moveArm(transformation_data.front_pose)
+            #print("home pose: "+ str(getPoseFromJoints(transformation_data.front_pose)))
             time.sleep(2)
             
             detect, yaw, cubePose = detectCube(clientID,proxSensor,bodyHandle)
             
-            if(detect):
-                moveArmPose(cubePose)
-                time.sleep(5)
-
+            e,soln = moveArmPose(cubePose)
+            
+            soln_pose = getPoseFromJoints(soln)
+            
+            print("Success? " + str(e))
+            print("Thetas: " + str(soln))
+            print("FK soln: " + str(soln_pose))
+            print("cube pose: " + str(cubePose))
+        
+        
+        
         '''
 
 

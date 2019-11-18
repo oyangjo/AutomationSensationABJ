@@ -31,29 +31,38 @@ Z3 -= Z1
 Z2 -= Z1
 Z1 -= Z1
 
+
+tcp_body_offset = [0.6334676742553711, -0.0014949440956115723, 0.2001180350780487]
+jointOffset = [[0.048922859132289886, -0.00027048581978306174, 0.16617558896541595],
+               [0.1501256823539734, 0.03913378715515137, 0.19925463199615479],
+               [0.30501049757003784, 0.03008347749710083, 0.19935449957847595],
+               [0.43981248140335083, -0.019968077540397644, 0.1996384561061859],
+               [0.53612220287323, -0.0009740293025970459, 0.20074805617332458]
+               ]
+
 # Create Matrix M
 # with respect to joint0, using object youBotArmJoint0.ME_Arm1_m0_sub0_sub0
 M = np.array([
-                [1, 0, 0, x_offset],
-                [0, 1, 0, 0],
-                [0, 0, 1, Z_TCP],
+                [0, 0, 1, tcp_body_offset[0]],
+                [1, 0, 0, tcp_body_offset[1]],
+                [0, 1, 0, tcp_body_offset[2]],
                 [0, 0, 0, 1]])
 
 # Create S vectors
     # first 3 entries are w: axis of rotation
     # last  3 entries are v: displacement of joint from S frame
 
-w1 = np.array([0, 0, 1])
+w1 = np.array([1, 0, 0])
 w2 = np.array([0, 1, 0])
 w3 = np.array([0, 1, 0])
 w4 = np.array([0, 1, 0])
-w5 = np.array([0, 0, 1])
+w5 = np.array([1, 0, 0])
 
-q1 = np.array([0, 0, Z1])
-q2 = np.array([x_offset, 0, Z2])
-q3 = np.array([x_offset, 0, Z3])
-q4 = np.array([x_offset, 0, Z4])
-q5 = np.array([x_offset, 0, Z5])
+q1 = np.array(jointOffset[0])
+q2 = np.array(jointOffset[1])
+q3 = np.array(jointOffset[2])
+q4 = np.array(jointOffset[3])
+q5 = np.array(jointOffset[4])
 
 v1 = np.cross(q1, w1);
 v2 = np.cross(q2, w2);
