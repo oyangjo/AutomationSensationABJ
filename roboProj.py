@@ -287,15 +287,10 @@ def main():
             print("FK soln: " + str(soln_pose))
             print("cube pose: " + str(cubePose))
         
-        
-        
         '''
-
 
         # move arm to 0 position
         moveArm(zero_pose)
-
-        
 
         # init theta arr
         theta = [0, 0, 0, 0, 0]
