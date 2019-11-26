@@ -22,6 +22,10 @@ SOURCE: https://github.com/NxRLab/ModernRobotics
 import time
 import numpy as np
 import modern_robotics as mr
+from sympy.solvers import solve
+from sympy import Symbol
+import sympy as sp
+import math
 
 try:
     import vrep
@@ -51,43 +55,128 @@ wheels = [0,0,0,0]
 clientID = 0
 MAX_FORCE = 25
 tcp_handle = ''
-def moveArmPose(end_pose):
 
+# function take pose of object with respect to body frame of the youbot and returns joint config 
+# in degrees and a success value which specifies if one of the thetas could not be calculated
+def moveArmPose(end_pose, yaw):
+
+    success = True
+    yaw = np.radians(yaw)
+    
+    print("Yaw in radians: " + str(yaw))
+    
     M  = transformation_data.M
     S  = transformation_data.S
     
-    T_d  = np.array([[0, -0.462, -0.89, end_pose[0]],
-                     [1, 0, 0, end_pose[1]],
-                     [0, -0.89, 0.46, end_pose[2]],
+    # length of links 1,2,3 along x - axis of the body
+    L1 = transformation_data.jointOffset[1][0] - transformation_data.jointOffset[0][0]
+    L2 = transformation_data.jointOffset[2][0] - transformation_data.jointOffset[1][0]
+    L3 = transformation_data.jointOffset[3][0] - transformation_data.jointOffset[2][0]
+
+    #coordinates of the joint 0 (base)
+    z_j0 = transformation_data.jointOffset[0][2]
+    y_j0 = transformation_data.jointOffset[0][1]
+    x_j0 = transformation_data.jointOffset[0][0]
+    
+    # update the goal to be the point j3 hits forcing the tcp to point in -x axis of body
+    # and update z to be with respect to the j0 rather than body
+    x_c = end_pose[0] + (transformation_data.tcp_body_offset[0] - transformation_data.jointOffset[3][0])
+    y_c = end_pose[1]
+    z_c = end_pose[2] - transformation_data.jointOffset[0][2]
+    
+    # get theta0 by projecting onto the zy = plane
+    theta0 = -np.arctan2(y_c,z_c)
+    
+    # get the distance on the zy plane from joint1 to the center point
+    # note that this assumes that theta 1 places all the length of the z offset from j0 to j1 along the path to center
+    r = np.sqrt(z_c**2 + y_c**2) - (transformation_data.jointOffset[1][2] - transformation_data.jointOffset[0][2])
+    print( np )
+    s = x_c - L1
+    print("r = " + str(r))
+    print("s = " + str(s))
+    print("L2 = " + str(L2))
+    print("L3 = " + str(L3))
+    print("should be between 1 and -1 : " + str((r**2 + s**2 - L2**2 - L3**2)/(2*L2*L3)))
+    theta2 = -np.arccos((r**2 + s**2 - L2**2 - L3**2)/(2*L2*L3))
+    
+    theta1 = -np.arctan2(r,s) - np.arctan2(L3*np.sin(theta2), L2 + L3*np.cos(theta2))
+
+    theta3 = -theta1 -theta2 -np.pi    
+    theta4 = yaw - theta0
+    
+    thetaList = [theta0, theta1,theta2,theta3,theta4]
+    """
+    dist_x = end_pose[0] - x_j0
+    
+    dist_body = np.sqrt(end_pose[1]**2 + end_pose[2]**2)
+    
+    dist_j0 = np.sqrt((end_pose[1] - y_j0)**2 + (end_pose[2] - z_j0)**2)
+    
+    print("d = " + str(dist_body))
+    print("a = " + str(dist_j0))
+    
+    alpha = np.arctan2(end_pose[1],end_pose[2])
+    beta = np.arcsin(dist_body*np.sin(alpha)/dist_j0) + np.pi/2
+    
+    print("dist j0 = " + str(dist_j0))
+    print("dist body = " + str(dist_body))
+    print("alpha = " + str(alpha*180/np.pi))
+    print("beta = " + str(beta*180/np.pi))
+    
+    
+    theta0 = -(np.pi - beta)
+    theta4 = yaw - theta0
+    print("theta0 = " + str(theta0))
+    print("theta4 = " + str(theta4))
+    
+    ##### estimate theta 1, and try again
+    # must solve for theta1
+    theta1 = Symbol('theta1')
+    print(solve(sp.acos((dist_x + L3 - L1*sp.cos(theta1))/(-L2)) - sp.asin((dist_j0 - L1*sp.sin(theta1))/L2),theta1))
+    
+    T_d  = np.array([[           0,            0 ,-1  , end_pose[0]],
+                     [ np.cos(yaw), -np.sin(yaw) , 0  , end_pose[1]],
+                     [ np.sin(yaw),  np.cos(yaw) , 0  , end_pose[2]],
                      [0,0,0,1]]) 
 
-    #guess = [0, 0, 0, 0, 0]
-    # get desired angles from end_pose
-    [thetalist, success] = mr.IKinSpace(S, M, T_d, transformation_data.front_pose, 0.1, 0.1)
+    guess = transformation_data.front_pose
     
-    for i in range(len(thetalist)):
-        thetalist[i] = thetalist[i]*180/np.pi
+    print("guess thetas in radians: \n" + str(guess))
+    # get desired angles from end_pose
+    [thetalist, success] = mr.IKinSpace(S, M, T_d, guess, 0.1, 0.1)
+    
+    
     
     #print(success)
     #print(thetalist)
-    if(success):
-        moveArm(thetalist)
-    return success,thetalist
+    #if(success):
+        #moveArm(thetalist)
+    """
+    
+    for i in range(len(thetaList)):
+        thetaList[i] = thetaList[i]*180/np.pi
+        if(math.isnan(thetaList[i])):
+            success = False
+        
+    return success,thetaList
 
-def moveArm(thetalist):
+def moveArm(thetaList):
     global clientID
     global armJoints
     time_between_movements = .2
     error = .05
 
+    for i in range(len(thetaList)):
+        thetaList[i] = thetaList[i]*np.pi/180
+        
     joint_movement_order = [0, 4, 1, 2, 3]
     for i in joint_movement_order:
         [e, curr_theta] = vrep.simxGetJointPosition(clientID, armJoints[i], vrep.simx_opmode_streaming)
-        goal_theta = thetalist[i]
+        goal_theta = thetaList[i]
         step = (goal_theta - curr_theta) / 10
         for j in range(9):
             vrep.simxSetJointPosition(clientID, armJoints[i], step*j + curr_theta, vrep.simx_opmode_streaming)
-            time.sleep(.01)
+            time.sleep(.05)
         vrep.simxSetJointPosition(clientID, armJoints[i], goal_theta, vrep.simx_opmode_streaming)
 
 def getPoseFromJoints(thetas):
@@ -277,16 +366,18 @@ def main():
             time.sleep(2)
             
             detect, yaw, cubePose = detectCube(clientID,proxSensor,bodyHandle)
+            if(detect):
+                e,soln = moveArmPose(cubePose, yaw)
             
-            e,soln = moveArmPose(cubePose)
+                soln_pose = getPoseFromJoints(soln)
             
-            soln_pose = getPoseFromJoints(soln)
-            
-            print("Success? " + str(e))
-            print("Thetas: " + str(soln))
-            print("FK soln: " + str(soln_pose))
-            print("cube pose: " + str(cubePose))
-        
+                #print("Success? " + str(e))
+                print("Thetas: " + str(soln))
+                print("FK soln: " + str(soln_pose))
+                print("cube pose: " + str(cubePose))
+                if(e):
+                    moveArm(soln)
+    
         '''
 
         # move arm to 0 position
