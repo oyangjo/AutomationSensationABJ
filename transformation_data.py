@@ -32,12 +32,12 @@ Z2 -= Z1
 Z1 -= Z1
 
 
-tcp_body_offset = [0.6334676742553711, -0.0014949440956115723, 0.2001180350780487]
-jointOffset = [[0.048922859132289886, -0.00027048581978306174, 0.16617558896541595],
-               [0.1501256823539734, 0.03913378715515137, 0.19925463199615479],
-               [0.30501049757003784, 0.03008347749710083, 0.19935449957847595],
-               [0.43981248140335083, -0.019968077540397644, 0.1996384561061859],
-               [0.53612220287323, -0.0009740293025970459, 0.20074805617332458]
+tcp_body_offset = [0.633, 0, 0.200]
+jointOffset = [[0.049, 0, 0.166],
+               [0.150, 0, 0.200],
+               [0.305, 0, 0.200],
+               [0.440, 0, 0.200],
+               [0.536, 0, 0.200]
                ]
 
 # Create Matrix M
@@ -69,9 +69,6 @@ v2 = np.cross(q2, w2);
 v3 = np.cross(q3, w3);
 v4 = np.cross(q4, w4);
 v5 = np.cross(q5, w5);
-
-print(np.transpose(w1))
-print(v1)
 
 # S of Joint 1
 S1 = np.array([ 
@@ -121,9 +118,6 @@ S5 = np.array([
 
 # S matrix
 S = np.concatenate((S1, S2, S3, S4, S5), axis=1)
-
-
-
 
 # Transformation matrix (from base coordinates to body frame coordinates):
 #end-effector coordinates in robot body frame coordinates:
