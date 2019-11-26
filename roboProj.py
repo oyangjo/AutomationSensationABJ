@@ -98,12 +98,11 @@ def getPoseFromJoints(thetas):
 
 def grab():
     global clientID
-    sig = vrep.simxSetIntSignal(clientID, "youBotGripperState", 0, vrep.simx_opmode_buffer)
-    print(sig)
+    vrep.simxCallScriptFunction(clientID, "youBot", vrep.sim_scripttype_childscript, "sysCall_test_close", [0], [0], '', '', vrep.simx_opmode_blocking)
 
 def release():
     global clientID
-    vrep.simxSetIntSignal(clientID, "youBotGripperState", 1, vrep.simx_opmode_buffer)
+    vrep.simxCallScriptFunction(clientID, "youBot", vrep.sim_scripttype_childscript, "sysCall_test_open", [0], [0], '', '', vrep.simx_opmode_blocking)
 
 def moveWheels(fl, fr, bl, br):
     global wheels
@@ -268,10 +267,14 @@ def main():
 
         #testing body frame conversion. doesn't work
         while True:
+            release()
+            time.sleep(1)
+            grab()
+            time.sleep(1)
             #moveArm(zero_pose)
             #print("zero pose: " + str(getPoseFromJoints(zero_pose)))
             #time.sleep(1)
-            
+            '''
             moveArm(transformation_data.front_pose)
             #print("home pose: "+ str(getPoseFromJoints(transformation_data.front_pose)))
             time.sleep(2)
@@ -286,6 +289,7 @@ def main():
             print("Thetas: " + str(soln))
             print("FK soln: " + str(soln_pose))
             print("cube pose: " + str(cubePose))
+            '''
         
         '''
 
