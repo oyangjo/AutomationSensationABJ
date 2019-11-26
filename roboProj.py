@@ -131,12 +131,14 @@ def getPoseFromJoints(thetas):
 
 def grab():
     global clientID
-    sig = vrep.simxSetIntSignal(clientID, "youBotGripperState", 0, vrep.simx_opmode_buffer)
-    print(sig)
+    vrep.simxCallScriptFunction(clientID, "youBot", vrep.sim_scripttype_childscript, "sysCall_test_close", [0], [0], '', '', vrep.simx_opmode_blocking)
+    time.sleep(0.5)
+
 
 def release():
     global clientID
-    vrep.simxSetIntSignal(clientID, "youBotGripperState", 1, vrep.simx_opmode_buffer)
+    vrep.simxCallScriptFunction(clientID, "youBot", vrep.sim_scripttype_childscript, "sysCall_test_open", [0], [0], '', '', vrep.simx_opmode_blocking)
+    time.sleep(0.5)
 
 def moveWheels(fl, fr, bl, br):
     global wheels
@@ -148,12 +150,6 @@ def moveWheels(fl, fr, bl, br):
     e4 = vrep.simxSetJointTargetVelocity(clientID, wheels[3], br, vrep.simx_opmode_streaming)
     return [e1, e2, e3, e4]
 
-'''
-function getT(theta):
-    Calculates the transformation matrix of the end-effector frame using forward kinematics
-    INPUT: theta- list of angles that the joints are set to
-    RETURNS: transformation matrix, whose 4th column holds XYZ coordinates of end-effector
-'''
 def getT(theta):
     # get data from transformation_data.py
     M  = transformation_data.M
@@ -241,11 +237,6 @@ def detectCube(clientID,proxSensor,bodyHandle):
     return detectionState,yaw,cube_pose 
 
 
-"""
-
-"""
-
-
 def main():
     # global variables
     global velocity
@@ -290,8 +281,15 @@ def main():
 
         #testing body frame conversion. doesn't work
         while True:
-            
-            ######## check why the move arm using front pose gives us 0 position
+
+            release()
+            time.sleep(1)
+            grab()
+            time.sleep(1)
+            #moveArm(zero_pose)
+            #print("zero pose: " + str(getPoseFromJoints(zero_pose)))
+            #time.sleep(1)
+
             moveArm(transformation_data.front_pose)
             
             time.sleep(2)
@@ -301,61 +299,15 @@ def main():
             if(detect):
                 e,soln = moveArmPose(cubePose, yaw)
                 soln_pose = getPoseFromJoints(soln)
-            
                 #print("Success? " + str(e))
                 print("Thetas: " + str(soln))
                 print("FK soln: " + str(soln_pose))
                 print("cube pose: " + str(cubePose))
+                
                 if(e):
                     moveArm(soln)
                     time.sleep(5)
-    
-        '''
 
-        # move arm to 0 position
-        moveArm(zero_pose)
-
-        # init theta arr
-        theta = [0, 0, 0, 0, 0]
-        for j in range (6):
-            if(j == 1):
-                theta = [np.pi/4, 0, 0, 0, 0]
-            elif(j == 2):
-                theta = [0, np.pi/4, 0, 0, 0]
-            elif(j == 3):
-                theta = [0, 0, np.pi/4, 0, 0]
-            elif(j == 4):
-                theta = [0, 0, 0, np.pi/4, 0]
-            elif(j == 5):
-                theta = [0, 0, 0, 0, np.pi/4]
-
-            # move arm to some location
-            moveArm(theta)
-
-            # get forward kinematics
-            T = getT(theta)
-
-            # print forward kinematics
-            print("\nCalculated Forward Kinematics:")
-            #print(T)
-            print(mr.FKinSpace(M, S, theta))
-            print("\n")
-
-            # get inverse kinematics
-            [thetalist, success] = mr.IKinSpace(S, M, T, theta, 0.1, 0.1)
-
-            # print inverse kinematics
-            print("\nCalculated Inverse Kinematics:\n")
-            print(str(thetalist))
-            print("\n")
-            print("\nReal Thetas:\n" + str(theta)+ "\n")
-
-            #wait until keypress
-            input("Press Enter to continue...")
-        
-
-        time.sleep(1)
-        '''
         # Now close the connection to V-REP:
         vrep.simxFinish(clientID)
     else:
