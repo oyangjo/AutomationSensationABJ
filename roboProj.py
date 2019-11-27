@@ -56,6 +56,14 @@ clientID = 0
 MAX_FORCE = 25
 tcp_handle = ''
 
+START = 0
+DRIVE_EMPTY = 1
+EXCAVATE = 2
+DRIVE_LOAD = 3
+DONE = 4
+
+STATE = 0
+
 # function take pose of object with respect to body frame of the youbot and returns joint config 
 # in degrees and a success value which specifies if one of the thetas could not be calculated
 def moveArmPose(end_pose, yaw):
@@ -87,7 +95,7 @@ def moveArmPose(end_pose, yaw):
     theta1 = -np.arctan2(r,s) - np.arctan2(L3*np.sin(theta2), L2 + L3*np.cos(theta2))
 
     theta3 = -theta1 -theta2 -np.pi    
-    theta4 = theta0 - yaw
+    theta4 = 0
     
     thetaList = [theta0, theta1,theta2,theta3,theta4]
     
@@ -281,11 +289,6 @@ def main():
 
         #testing body frame conversion. doesn't work
         while True:
-
-            release()
-            time.sleep(1)
-            grab()
-            time.sleep(1)
             #moveArm(zero_pose)
             #print("zero pose: " + str(getPoseFromJoints(zero_pose)))
             #time.sleep(1)
@@ -306,7 +309,11 @@ def main():
                 
                 if(e):
                     moveArm(soln)
-                    time.sleep(5)
+                    grab()
+                    moveArm(transformation_data.front_pose)
+                    time.sleep(1)
+                    release()
+                    
 
         # Now close the connection to V-REP:
         vrep.simxFinish(clientID)
