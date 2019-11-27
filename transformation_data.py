@@ -8,6 +8,13 @@ NOTE: THIS ASSUMES (X,Y) ARE (0,0). Z SHOULD BE THE ONLY VARIABLE COORDINATE
 
 '''
 
+START = 0
+DRIVE_EMPTY = 1
+EXCAVATE = 2
+DRIVE_LOAD = 3
+DEPOSIT = 4
+DONE = 5
+
 # Z of TCP given 
 Z_TCP = 0.7289 
 # Z of Joint 1
@@ -145,4 +152,4 @@ zero_pose = [0, 0, 0, 0, 0]
 plate_pose = np.radians([0, 30.9, 52.4, 72.7, 0])
 
 
-front_pose = np.radians([0, -30.4, -45.6, -76.5, 0])
+front_pose = np.radians([0, -30.0, -40.0, -50.0, 0])

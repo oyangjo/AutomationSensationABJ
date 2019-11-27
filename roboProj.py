@@ -56,17 +56,13 @@ clientID = 0
 MAX_FORCE = 25
 tcp_handle = ''
 
-START = 0
-DRIVE_EMPTY = 1
-EXCAVATE = 2
-DRIVE_LOAD = 3
-DONE = 4
 
-STATE = 0
+
+cur_state = 0
 
 # function take pose of object with respect to body frame of the youbot and returns joint config 
 # in degrees and a success value which specifies if one of the thetas could not be calculated
-def moveArmPose(end_pose, yaw):
+def findThetas(end_pose, yaw):
 
     success = True
 
@@ -106,18 +102,41 @@ def moveArmPose(end_pose, yaw):
     return success,thetaList
 
 
+def grabCube(cubePose, yaw):
+    global cur_state
+    
+    if(cur_state != transformation_data.EXCAVATE):
+        print("ERROR: not in excavation mode.")
+        return False
+    
+    success, thetaList = findThetas(cubePose,yaw)
+    if(success):
+        moveArm(thetaList, [0,3,2,1,4])
+        grab()
+        moveArm(transformation_data.front_pose, [4,3,2,1,0])
+        moveArm(transformation_data.plate_pose, [0,3,2,1,4])
+        cur_state = transformation_data.DRIVE_LOAD
+        return True
+    else:
+        print("Cube out of reach.")
+        return False
+        
+def dropCube():
+    global cur_state
+    if(cur_state != transformation_data.DEPOSIT):
+        print("Error: Not in Deposit state. Status of cube unknown.")
+        return False
+    
+    moveArm(transformation_data.front_pose,[0,3,2,1,4])
+    release()
+    cur_state = transformation_data.DONE
+    return True
 
-# should update function to move to home or front position based on delta theta
-# probably better that first move from current pose to back or front home pose,
-# then move appropriate home pose based on destination 
-def moveArm(thetaList):
+def moveArm(thetaList, joint_movement_order):
     global clientID
     global armJoints
     time_between_movements = .2
     error = .05
-        
-    # move base, then rotate gripper, then the planar joints
-    joint_movement_order = [0, 4, 3, 2, 1]
     
     for i in joint_movement_order:
         [e, curr_theta] = vrep.simxGetJointPosition(clientID, armJoints[i], vrep.simx_opmode_streaming)
@@ -127,6 +146,7 @@ def moveArm(thetaList):
             vrep.simxSetJointPosition(clientID, armJoints[i], step*j + curr_theta, vrep.simx_opmode_streaming)
             time.sleep(.05)
         vrep.simxSetJointPosition(clientID, armJoints[i], goal_theta, vrep.simx_opmode_streaming)
+        time.sleep(0.05)
 
 def getPoseFromJoints(thetas):
     
@@ -245,6 +265,10 @@ def detectCube(clientID,proxSensor,bodyHandle):
     return detectionState,yaw,cube_pose 
 
 
+def detectWalls():
+    global clientID
+    
+
 def main():
     # global variables
     global velocity
@@ -293,12 +317,15 @@ def main():
             #print("zero pose: " + str(getPoseFromJoints(zero_pose)))
             #time.sleep(1)
 
-            moveArm(transformation_data.front_pose)
+            moveArm(transformation_data.front_pose, [0,3,2,1,4])
             
-            time.sleep(2)
+            moveWheels(0.5, -0.5, 0.5, -0.5)
+            
+            time.sleep(10)
             
             detect, yaw, cubePose = detectCube(clientID,proxSensor,bodyHandle)
             
+            '''
             if(detect):
                 e,soln = moveArmPose(cubePose, yaw)
                 soln_pose = getPoseFromJoints(soln)
@@ -313,7 +340,7 @@ def main():
                     moveArm(transformation_data.front_pose)
                     time.sleep(1)
                     release()
-                    
+               '''     
 
         # Now close the connection to V-REP:
         vrep.simxFinish(clientID)
