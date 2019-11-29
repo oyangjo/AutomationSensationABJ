@@ -54,34 +54,80 @@ tcp_handle = 0
 bodyHandle = 0
 def moveArmPose(end_pose):
 
-    M  = transformation_data.M
-    S  = transformation_data.S
-    
-    T_d  = np.array([[0, -0.462, -0.89, end_pose[0]],
-                     [1, 0, 0, end_pose[1]],
-                     [0, -0.89, 0.46, end_pose[2]],
-                     [0,0,0,1]]) 
+cur_state = 0
+# function take pose of object with respect to body frame of the youbot and returns joint config 
+# in degrees and a success value which specifies if one of the thetas could not be calculated
+def moveArmPose(end_pose, yaw):
+    success = True
 
-    #guess = [0, 0, 0, 0, 0]
-    # get desired angles from end_pose
-    [thetalist, success] = mr.IKinSpace(S, M, T_d, transformation_data.front_pose, 0.1, 0.1)
+    # length of links 1,2,3 along x - axis of the body
+    L1 = transformation_data.jointOffset[1][0] - transformation_data.jointOffset[0][0]
+    L2 = transformation_data.jointOffset[2][0] - transformation_data.jointOffset[1][0]
+    L3 = transformation_data.jointOffset[3][0] - transformation_data.jointOffset[2][0]
+
+    # update the goal to be the point j3 hits forcing the tcp to point in -x axis of body
+    # and update z to be with respect to the j0 rather than body
+    x_c = end_pose[0] + (transformation_data.tcp_body_offset[0] - transformation_data.jointOffset[3][0]) - transformation_data.jointOffset[0][0]/2
+    y_c = end_pose[1]
+    z_c = end_pose[2] - transformation_data.jointOffset[0][2]
     
-    for i in range(len(thetalist)):
-        thetalist[i] = thetalist[i]*180/np.pi
+    # get theta0 by projecting onto the zy = plane
+    theta0 = -np.arctan2(y_c,z_c)
     
-    #print(success)
-    #print(thetalist)
+    # get the distance on the zy plane from joint1 to the center point
+    # note that this assumes that theta 1 places all the length of the z offset from j0 to j1 along the path to center
+    r = np.sqrt(z_c**2 + y_c**2) - (transformation_data.jointOffset[1][2] - transformation_data.jointOffset[0][2])
+    s = x_c - L1 
+
+    theta2 = -np.arccos((r**2 + s**2 - L2**2 - L3**2)/(2*L2*L3))
+    theta1 = -np.arctan2(r,s) - np.arctan2(L3*np.sin(theta2), L2 + L3*np.cos(theta2))
+    theta3 = -theta1 -theta2 -np.pi    
+    theta4 = 0
+    
+    thetaList = [theta0, theta1,theta2,theta3,theta4]
+    
+    for i in range(len(thetaList)):
+        if(math.isnan(thetaList[i])):
+            success = False
+        
+    return success,thetaList
+
+def grabCube(cubePose, yaw):
+    global cur_state
+    
+    if(cur_state != transformation_data.EXCAVATE):
+        print("ERROR: not in excavation mode.")
+        return False
+    
+    success, thetaList = findThetas(cubePose,yaw)
     if(success):
-        moveArm(thetalist)
-    return success,thetalist
+        moveArm(thetaList, [0,3,2,1,4])
+        grab()
+        moveArm(transformation_data.front_pose, [4,3,2,1,0])
+        moveArm(transformation_data.plate_pose, [0,3,2,1,4])
+        cur_state = transformation_data.DRIVE_LOAD
+        return True
+    else:
+        print("Cube out of reach.")
+        return False
+        
+def dropCube():
+    global cur_state
+    if(cur_state != transformation_data.DEPOSIT):
+        print("Error: Not in Deposit state. Status of cube unknown.")
+        return False
+    
+    moveArm(transformation_data.front_pose,[0,3,2,1,4])
+    release()
+    cur_state = transformation_data.DONE
+    return True
 
-def moveArm(thetalist):
+def moveArm(thetaList, joint_movement_order):
     global clientID
     global armJoints
     time_between_movements = .2
     error = .05
 
-    joint_movement_order = [0, 4, 1, 2, 3]
     for i in joint_movement_order:
         [e, curr_theta] = vrep.simxGetJointPosition(clientID, armJoints[i], vrep.simx_opmode_streaming)
         goal_theta = thetalist[i]
@@ -90,6 +136,7 @@ def moveArm(thetalist):
             vrep.simxSetJointPosition(clientID, armJoints[i], step*j + curr_theta, vrep.simx_opmode_streaming)
             time.sleep(.01)
         vrep.simxSetJointPosition(clientID, armJoints[i], goal_theta, vrep.simx_opmode_streaming)
+        time.sleep(0.05)
 
 def getPoseFromJoints(thetas):
     M = transformation_data.M
@@ -259,11 +306,6 @@ def detectCube(clientID,proxSensor,bodyHandle):
     return detectionState,yaw,cube_pose 
 
 
-"""
-
-"""
-
-
 def main():
     # global variables
     global velocity
@@ -312,8 +354,11 @@ def main():
 
 
         # TESTING
-
         moveToDestination([0,0,0])
+        
+        while(1):
+            # put test code here
+
 
         # Now close the connection to V-REP:
         vrep.simxFinish(clientID)
