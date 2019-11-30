@@ -191,13 +191,13 @@ def moveToDestination(destination):
     # Get the current position of the robot body (so we know the direction the robot is facing)
     e, body_pos = vrep.simxGetObjectPosition(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
     distance_to_dest = np.sqrt( (body_pos[0] - destination[0])**2 + (body_pos[1] - destination[1])**2 )
-    print(distance_to_dest)
+    print("Distance to goal: " + str(distance_to_dest))
 
     turnToGoal(destination)
     moveWheels(-1,-1,-1,-1)
     angleCorrectionTick = 0
     while(distance_to_dest > DIST_ERROR):
-        print(distance_to_dest)
+        print("Distance to goal: " + str(distance_to_dest))
         # CHECK IF OBSTICLE
             # to do
         e, body_pos = vrep.simxGetObjectPosition(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
@@ -221,8 +221,8 @@ def turnToGoal(goal):
     global clientID
     global bodyHandle
     global TURN_ERROR
-    e, curr_pos = e, body_pos = vrep.simxGetObjectPosition(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
-
+    e, curr_pos = vrep.simxGetObjectPosition(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
+    print(curr_pos)
     #Given by 90 - arctan(∆Y/∆X)
     goal_rot = math.atan2(curr_pos[1] - goal[1] , curr_pos[0] - goal[0])
     curr_rot = currentRotationAngle()
@@ -449,6 +449,18 @@ def main():
         # MAKE A CALL WITH simx_opmode_streaming TO INIT DATA AQUISITION
         vrep.simxGetObjectPosition(clientID, bodyHandle, -1, vrep.simx_opmode_streaming)
         vrep.simxGetObjectOrientation(clientID, bodyHandle, -1, vrep.simx_opmode_streaming)
+        vrep.simxGetObjectPosition(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
+        vrep.simxGetObjectOrientation(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
+
+
+        '''
+        DO NOT DELETE
+        NEEDED TO MAKE ROBOT GET CORRECT POSITION AT START (wait until buffer is cleared)
+        '''
+        print("Initializing robot...\n\n")
+        time.sleep(2)
+
+
 
 
         # TESTING
