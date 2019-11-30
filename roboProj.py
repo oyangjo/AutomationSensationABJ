@@ -22,7 +22,7 @@ SOURCE: https://github.com/NxRLab/ModernRobotics
 import time
 import numpy as np
 import modern_robotics as mr
-
+import math 
 try:
     import vrep
 except:
@@ -52,9 +52,12 @@ clientID = 0
 MAX_FORCE = 25
 tcp_handle = 0
 bodyHandle = 0
-def moveArmPose(end_pose):
+TURN_ERROR = 5 * math.pi/180
+DIST_ERROR = 0.05
 
-cur_state = 0
+def moveArmPose(end_pose):
+    cur_state = 0
+
 # function take pose of object with respect to body frame of the youbot and returns joint config 
 # in degrees and a success value which specifies if one of the thetas could not be calculated
 def moveArmPose(end_pose, yaw):
@@ -163,56 +166,84 @@ def moveWheels(fl, fr, bl, br):
     bl *= velocity
     br *= velocity
     #moves the wheels
-    e1 = vrep.simxSetJointTargetVelocity(clientID, wheels[0], fl, vrep.simx_opmode_streaming)
-    e2 = vrep.simxSetJointTargetVelocity(clientID, wheels[1], fr, vrep.simx_opmode_streaming)
-    e3 = vrep.simxSetJointTargetVelocity(clientID, wheels[2], bl, vrep.simx_opmode_streaming)
-    e4 = vrep.simxSetJointTargetVelocity(clientID, wheels[3], br, vrep.simx_opmode_streaming)
+    e1 = vrep.simxSetJointTargetVelocity(clientID, wheels[0], fl, vrep.simx_opmode_oneshot)
+    e2 = vrep.simxSetJointTargetVelocity(clientID, wheels[1], bl, vrep.simx_opmode_oneshot)
+    e3 = vrep.simxSetJointTargetVelocity(clientID, wheels[2], br, vrep.simx_opmode_oneshot)
+    e4 = vrep.simxSetJointTargetVelocity(clientID, wheels[3], fr, vrep.simx_opmode_oneshot)
     return [e1, e2, e3, e4]
-
+def turnLeft(theta):
+    #print("Turning left")
+    moveWheels(-1, 1, -1, 1)
+def turnRight(theta):
+    #print("Turning right")
+    moveWheels(1, -1, 1, -1)
 def stopWheels():
     moveWheels(0,0,0,0)
+
 
 def moveToDestination(destination):
     global wheels
     global clientID
     global armJoints
-    global tcp_handle
     global bodyHandle
-
-    # Get the current position of the TCP
-    e, tcp_pos = vrep.simxGetObjectPosition(clientID, tcp_handle, -1, vrep.simx_opmode_buffer)
+    global DIST_ERROR
 
     # Get the current position of the robot body (so we know the direction the robot is facing)
     e, body_pos = vrep.simxGetObjectPosition(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
-    distance_to_dest = np.sqrt( (tcp_pos[0] - destination[0])**2 + (tcp_pos[1] - destination[1])**2 )
-    '''
-    while False: #(distance_to_dest <= .5):
-        
-        # Check if there's an obsticle in front of us
-        # TO DO
+    distance_to_dest = np.sqrt( (body_pos[0] - destination[0])**2 + (body_pos[1] - destination[1])**2 )
+    print(distance_to_dest)
 
-
-        # Get current rotation of the robot body
-        e, body_orientation = vrep.simxGetObjectOrientation(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
-        # Get the current position of the robot body (so we know the direction the robot is facing)
+    turnToGoal(destination)
+    moveWheels(-1,-1,-1,-1)
+    angleCorrectionTick = 0
+    while(distance_to_dest > DIST_ERROR):
+        print(distance_to_dest)
+        # CHECK IF OBSTICLE
+            # to do
         e, body_pos = vrep.simxGetObjectPosition(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
-        
-        print("Body position: " + str(body_pos))
-        print("Body Orientation:" + str(body_orientation))
-        
-        # Rotate until the orientation faces the destination
-        # TO DO
-
-        # Move forward
-        moveWheels(10,-10,10,10)
-        distance_to_dest = np.sqrt( (tcp_pos[0] - destination[0])**2 + (tcp_pos[1] - destination[1])**2 )
-    '''
+        distance_to_dest = np.sqrt( (body_pos[0] - destination[0])**2 + (body_pos[1] - destination[1])**2 )
+        time.sleep(.5)
+        if(angleCorrectionTick == 5): # correct angle every 2.5 seconds
+            turnToGoal(destination)
+            moveWheels(-1,-1,-1,-1) # Turn to goal turns off the wheels. Turn them back on
+            angleCorrectionTick = 0
+        angleCorrectionTick += 1
 
     # Arrived at destination
-    
-    moveWheels(1,-1,1,1)
-    time.sleep(100)
+    stopWheels()
 
+    print("Arrived!")
+
+
+# Turns towards the point given in the world frame
+def turnToGoal(goal):
+    global wheels
+    global clientID
+    global bodyHandle
+    global TURN_ERROR
+    e, curr_pos = e, body_pos = vrep.simxGetObjectPosition(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
+
+    #Given by 90 - arctan(∆Y/∆X)
+    goal_rot = math.atan2(curr_pos[1] - goal[1] , curr_pos[0] - goal[0])
+    curr_rot = currentRotationAngle()
+    #print("Must get orientation to " + str(goal_rot*180/math.pi) + "º. Current orientation is " + str(curr_rot*180/math.pi) + "º.\n")
+    # Turn left to increase current angle. Turn right to decrease current angle
+
+    # Calculates most efficient way to turn:
+    dir = 1 # Assume turning right
+    if(goal_rot < curr_rot):
+        dir *= -1
+    if(abs(goal_rot - curr_rot) >= math.pi):
+        dir *= -1
+
+    if (dir == 1):
+        turnRight(0)
+    else:
+        turnLeft(0)
+    while (abs(goal_rot - currentRotationAngle()) > TURN_ERROR):
+        time.sleep(.05)
+        #print(str(goal_rot) + " " + str(currentRotationAngle()) )
+    stopWheels()
 '''
 function getT(theta):
     Calculates the transformation matrix of the end-effector frame using forward kinematics
@@ -254,7 +285,74 @@ def getT(theta):
     # finally, multiply by M
     T = T.dot(M)
     return T
+def py_ang(v1, v2):
+    """ Returns the angle in radians between vectors 'v1' and 'v2'    """
+    cosang = np.dot(v1, v2)
+    sinang = np.linalg.norm(np.cross(v1, v2))
+    return np.arctan2(sinang, cosang) * 180 / np.pi
+# Calculates Rotation Matrix given euler angles.
+def eulerAnglesToRotationMatrix(theta) :
+     
+    R_x = np.array([[1,         0,                  0                   ],
+                    [0,         math.cos(theta[0]), -math.sin(theta[0]) ],
+                    [0,         math.sin(theta[0]), math.cos(theta[0])  ]
+                    ])
+         
+         
+                     
+    R_y = np.array([[math.cos(theta[1]),    0,      math.sin(theta[1])  ],
+                    [0,                     1,      0                   ],
+                    [-math.sin(theta[1]),   0,      math.cos(theta[1])  ]
+                    ])
+                 
+    R_z = np.array([[math.cos(theta[2]),    -math.sin(theta[2]),    0],
+                    [math.sin(theta[2]),    math.cos(theta[2]),     0],
+                    [0,                     0,                      1]
+                    ])
+                     
+                     
+    R = np.dot(R_z, np.dot( R_y, R_x ))
+ 
+    return R
+def rotationMatrixToEulerAngles(R) :
+ 
+    sy = math.sqrt(R[0,0] * R[0,0] +  R[1,0] * R[1,0])
+     
+    singular = sy < 1e-6
+ 
+    if  not singular :
+        x = math.atan2(R[2,1] , R[2,2])
+        y = math.atan2(-R[2,0], sy)
+        z = math.atan2(R[1,0], R[0,0])
+    else :
+        x = math.atan2(-R[1,2], R[1,1])
+        y = math.atan2(-R[2,0], sy)
+        z = 0
+ 
+    return np.array([x, y, z])
+# Returns the rotation matrix of the robot in terms of world coordinates
+# given an angle about the world x axis
+def getRobotRotationMatrixFromAngle(theta):
 
+    return np.array([
+        [0,                 0,                  1],
+        [-math.sin(theta),  -math.cos(theta),   0],
+        [math.cos(theta),   -math.sin(theta),   0]
+        ])
+# Returns the angle of rotation of the robot in about the x axis of the world frame
+def currentRotationAngle():
+    global clientID
+    global bodyHandle
+
+    e, body_orientation = vrep.simxGetObjectOrientation(clientID, bodyHandle, -1, vrep.simx_opmode_streaming)
+    R = eulerAnglesToRotationMatrix(body_orientation)
+    return -math.atan2(  -R[1,0], R[2,0] )
+# Just used for testing. Here for safekeeping
+def setRotation():
+    global clientID, bodyHandle
+    new_rot = getRobotRotationMatrixFromAngle(i)
+    angles = rotationMatrixToEulerAngles(new_rot)
+    vrep.simxSetObjectOrientation(clientID, bodyHandle, -1, angles, vrep.simx_opmode_oneshot)
 # this doesn't work. Tried converting by subtraction
 def convertToBodyCoordinatesFromSpaceCoordinates(x, y, z):
     #[0.6336228847503662, -0.0013938546180725098, 0.19836857914924622]
@@ -350,16 +448,12 @@ def main():
             vrep.simxSetJointForce(clientID, armJoints[i], MAX_FORCE, vrep.simx_opmode_oneshot_wait)
         # MAKE A CALL WITH simx_opmode_streaming TO INIT DATA AQUISITION
         vrep.simxGetObjectPosition(clientID, bodyHandle, -1, vrep.simx_opmode_streaming)
-
+        vrep.simxGetObjectOrientation(clientID, bodyHandle, -1, vrep.simx_opmode_streaming)
 
 
         # TESTING
-        moveToDestination([0,0,0])
-        
-        while(1):
-            # put test code here
-
-
+        moveToDestination([1.4, -0.97, 0.5])
+        stopWheels()
         # Now close the connection to V-REP:
         vrep.simxFinish(clientID)
     else:
