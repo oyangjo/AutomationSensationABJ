@@ -23,6 +23,11 @@ import time
 import numpy as np
 import modern_robotics as mr
 import math 
+import matplotlib.pyplot as plt
+import cv2
+import numpy.linalg as la
+from scipy import stats
+
 try:
     import vrep
 except:
@@ -403,6 +408,110 @@ def detectCube(clientID,proxSensor,bodyHandle):
     
     return detectionState,yaw,cube_pose 
 
+'''
+initialize all parameters for blob detection
+'''
+def blob_search_init():
+        params = cv2.SimpleBlobDetector_Params()
+        # Filter by Area.
+        params.filterByArea = True
+        params.minArea = 7
+        # Filter by Circularity
+        params.filterByCircularity = True
+        params.minCircularity = 0.2
+        # Filter by Inerita
+        params.filterByInertia = True
+        params.minInertiaRatio = 0.3
+        # Filter by Convexity
+        params.filterByConvexity = True
+        params.minConvexity = 0.3
+
+        blob_detector = cv2.SimpleBlobDetector_create(params)
+        return blob_detector
+
+'''
+Get the distance between vision sensor and cube
+Have linear regression with x and 1/y
+input: x (float), the pixel size of the detected blob
+output: 1/y * alpha (float), distance between vision sensor and cube
+'''
+def getBlobDist(x):
+    alpha = 1.1
+    blobSize = np.array([ 10.770329,  9.89123,   8.944272,  8.0622577,  7.28010,    6.32455,   5.4649858, 5.0,        4.472136,  3.6055512, 3.1622777])
+    distVsCube = np.array([0.358878,  0.3818426, 0.4411265, 0.49202667, 0.5928447,  0.6524103, 0.7914521, 0.8638230,  0.9806854, 1.1742128, 1.4958543])
+    inverse = np.array([1/d for d in distVsCube])                                         #do 1/d becaus that is the relation
+    slope, intercept, r_value, p_value, std_err = stats.linregress(blobSize,inverse)      #get slope and intercept
+    
+    y = intercept + slope * x
+    return (1/y) * alpha
+
+'''
+Get cube's properties: the distance and center of the cube
+use open cv to detect blob's size and certer
+Call getBlobDist to convert size to distance of blob
+input: clientID, vsHandle
+output: blobDist(float), blobCenter(np.array(x, y ,z))
+'''
+def getCubeProperties(clientID, vsHandle):
+    moveArm(transformation_data.front_pose)
+    err, resolution, image = vrep.simxGetVisionSensorImage(clientID, vsHandle, 0, vrep.simx_opmode_buffer)
+    
+    if err == vrep.simx_return_ok:  #checking if there is an error
+        print("Image GOOD!!!")
+        
+        # Reshaping the imgae to the right np array
+        img = np.array(image,dtype=np.uint8)
+        img.resize([resolution[1],resolution[0],3])   #this image is upsidedown
+        img = np.flip(img, 1)
+        img = np.flip(img)
+
+        # Define a mask using the lower and upper bounds of the orange color
+        lower =(150, 200, 0)
+        upper = (180, 255, 200)
+        mask_image = cv2.inRange(img, lower, upper)
+        
+        # find centroid of the blobs
+        blob_detector = blob_search_init()
+        reverse_mask = 255 - mask_image
+        keypoints = blob_detector.detect(reverse_mask)
+        
+        # find coordinate and size of the blob. The criteria is only one blob
+        blobCenter, blobSize = [], 0
+        if len(keypoints) == 1:
+            print('Detecting one blob!')
+            blobCenter = np.array(keypoints[0].pt)
+            blobSize = keypoints[0].size
+
+        blobDist = getBlobDist(blobSize)
+        
+        '''
+        # getting position of the vision sensor/cube and the distance between the two
+        e, vsPose = vrep.simxGetObjectPosition(clientID, vsHandle, -1, vrep.simx_opmode_streaming)
+        e, cubePose = vrep.simxGetObjectPosition(clientID, cubeHandle, -1, vrep.simx_opmode_streaming)
+        disVsCube = np.sqrt(np.sum((np.array(vsPose) - np.array(cubePose))**2, axis = 0))
+        print(disVsCube)
+        
+        # Draw detected blobs as red circles.
+        im_with_keypoints = cv2.drawKeypoints(img, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+
+        # display images
+        cv2.imshow("Mask Window", mask_image)
+        cv2.imshow("Blob Centroids", im_with_keypoints)
+        cv2.imshow('Image',img)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+        '''
+        
+        return blobDist, blobCenter
+    elif err == vrep.simx_return_novalue_flag:
+        print("no image yet")
+        pass
+    else:
+      print(err)
+    
+    
+    
+    
 
 def main():
     # global variables
@@ -432,6 +541,7 @@ def main():
         e, bodyHandle = vrep.simxGetObjectHandle(clientID, "youBot", vrep.simx_opmode_blocking)
         e, cubeHandle = vrep.simxGetObjectHandle(clientID, "Rectangle16", vrep.simx_opmode_blocking)
         e, proxSensor = vrep.simxGetObjectHandle(clientID, "Proximity_sensor", vrep.simx_opmode_blocking)
+        #e, visionSensorHandle = vrep.simxGetObjectHandle(clientID, "Vision_sensor", vrep.simx_opmode_blocking)
         
         # initialize wheel motors
         e1,wheels[0] = vrep.simxGetObjectHandle(clientID, 'rollingJoint_fl', vrep.simx_opmode_oneshot_wait)
@@ -453,6 +563,31 @@ def main():
         vrep.simxGetObjectOrientation(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
 
 
+        
+        '''
+        Access Vision_sensor to locate block
+        References:
+        http://forum.coppeliarobotics.com/viewtopic.php?f=9&t=7012#p27785
+        https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.stats.linregress.html
+        '''
+        
+        
+        
+        #Get the handle of the vision sensor
+        print('Vision Sensor object handling')
+        res, vsHandle = vrep.simxGetObjectHandle(clientID, 'Vision_sensor', vrep.simx_opmode_oneshot_wait)
+        res, cubeHandle = vrep.simxGetObjectHandle(clientID, 'Rectangle16', vrep.simx_opmode_oneshot_wait)
+        print('Getting first image')
+        err, resolution, image = vrep.simxGetVisionSensorImage(clientID, vsHandle, 0, vrep.simx_opmode_streaming)
+        while (vrep.simxGetConnectionId(clientID) != -1):
+            blobDist, blobCenter = getCubeProperties(clientID, vsHandle)
+            print(blobDist)
+            
+            
+            
+        
+       
+        #TESTING if we can move the arm between two poses
         '''
         DO NOT DELETE
         NEEDED TO MAKE ROBOT GET CORRECT POSITION AT START (wait until buffer is cleared)
