@@ -26,6 +26,7 @@ import math
 import matplotlib.pyplot as plt
 import cv2
 import numpy.linalg as la
+import time
 from scipy import stats
 
 try:
@@ -58,7 +59,8 @@ MAX_FORCE = 25
 tcp_handle = 0
 bodyHandle = 0
 TURN_ERROR = 5 * math.pi/180
-DIST_ERROR = 0.05
+DIST_ERROR = 1
+holdingCube = False
 
 def moveArmPose(end_pose):
     cur_state = 0
@@ -99,9 +101,49 @@ def moveArmPose(end_pose, yaw):
             success = False
         
     return success,thetaList
+# function take pose of object with respect to body frame of the youbot and returns joint config 
+# in degrees and a success value which specifies if one of the thetas could not be calculated
+def findThetas(end_pose, yaw):
+
+    success = True
+
+    # length of links 1,2,3 along x - axis of the body
+    L1 = transformation_data.jointOffset[1][0] - transformation_data.jointOffset[0][0]
+    L2 = transformation_data.jointOffset[2][0] - transformation_data.jointOffset[1][0]
+    L3 = transformation_data.jointOffset[3][0] - transformation_data.jointOffset[2][0]
+
+
+    # update the goal to be the point j3 hits forcing the tcp to point in -x axis of body
+    # and update z to be with respect to the j0 rather than body
+    x_c = end_pose[0] + (transformation_data.tcp_body_offset[0] - transformation_data.jointOffset[3][0]) - transformation_data.jointOffset[0][0]/2
+    y_c = end_pose[1]
+    z_c = end_pose[2] - transformation_data.jointOffset[0][2]
+    
+    # get theta0 by projecting onto the zy = plane
+    theta0 = -np.arctan2(y_c,z_c)
+    
+    # get the distance on the zy plane from joint1 to the center point
+    # note that this assumes that theta 1 places all the length of the z offset from j0 to j1 along the path to center
+    r = np.sqrt(z_c**2 + y_c**2) - (transformation_data.jointOffset[1][2] - transformation_data.jointOffset[0][2])
+    s = x_c - L1 
+
+    theta2 = -np.arccos((r**2 + s**2 - L2**2 - L3**2)/(2*L2*L3))
+    
+    theta1 = -np.arctan2(r,s) - np.arctan2(L3*np.sin(theta2), L2 + L3*np.cos(theta2))
+
+    theta3 = -theta1 -theta2 -np.pi    
+    theta4 = theta0 - yaw
+    
+    thetaList = [theta0, theta1,theta2,theta3,theta4]
+    
+    for i in range(len(thetaList)):
+        if(math.isnan(thetaList[i])):
+            success = False
+        
+    return success,thetaList
 
 def grabCube(cubePose, yaw):
-    global cur_state
+    cur_state = transformation_data.EXCAVATE
     
     if(cur_state != transformation_data.EXCAVATE):
         print("ERROR: not in excavation mode.")
@@ -110,7 +152,10 @@ def grabCube(cubePose, yaw):
     success, thetaList = findThetas(cubePose,yaw)
     if(success):
         moveArm(thetaList, [0,3,2,1,4])
+        
+
         grab()
+
         moveArm(transformation_data.front_pose, [4,3,2,1,0])
         moveArm(transformation_data.plate_pose, [0,3,2,1,4])
         cur_state = transformation_data.DRIVE_LOAD
@@ -136,9 +181,13 @@ def moveArm(thetaList, joint_movement_order):
     time_between_movements = .2
     error = .05
 
+    # default joint movement order
+    if(len(joint_movement_order) == 0):
+        joint_movement_order = [0, 4, 1, 2, 3]
+
     for i in joint_movement_order:
         [e, curr_theta] = vrep.simxGetJointPosition(clientID, armJoints[i], vrep.simx_opmode_streaming)
-        goal_theta = thetalist[i]
+        goal_theta = thetaList[i]
         step = (goal_theta - curr_theta) / 10
         for j in range(9):
             vrep.simxSetJointPosition(clientID, armJoints[i], step*j + curr_theta, vrep.simx_opmode_streaming)
@@ -153,12 +202,21 @@ def getPoseFromJoints(thetas):
     return T_pose
 
 def grab():
+    global holdingCube
     global clientID
-    vrep.simxCallScriptFunction(clientID, "youBot", vrep.sim_scripttype_childscript, "sysCall_test_close", [0], [0], '', '', vrep.simx_opmode_blocking)
+    j, u, n, grabRet, k = vrep.simxCallScriptFunction(clientID, "youBot", vrep.sim_scripttype_childscript, "sysCall_test_close", [0], [0], '', '', vrep.simx_opmode_blocking)
+    print(grabRet[0])
+    if(float(grabRet[0]) < -0.0):
+            holdingCube = True
+    time.sleep(1)
 
 def release():
+    global holdingCube
     global clientID
     vrep.simxCallScriptFunction(clientID, "youBot", vrep.sim_scripttype_childscript, "sysCall_test_open", [0], [0], '', '', vrep.simx_opmode_blocking)
+    holdingCube = False
+    time.sleep(0.5)
+
 
 def moveWheels(fl, fr, bl, br):
     global wheels
@@ -177,11 +235,17 @@ def moveWheels(fl, fr, bl, br):
     e4 = vrep.simxSetJointTargetVelocity(clientID, wheels[3], fr, vrep.simx_opmode_oneshot)
     return [e1, e2, e3, e4]
 def turnLeft(theta):
-    #print("Turning left")
     moveWheels(-1, 1, -1, 1)
 def turnRight(theta):
-    #print("Turning right")
     moveWheels(1, -1, 1, -1)
+def moveRight():
+    moveWheels(-1, 1, 1, -1)
+def moveLeft():
+    moveWheels(1, -1, -1, 1)
+def moveForward():
+    moveWheels(-1, -1, -1, -1)
+def moveBackward():
+    moveWheels(1, 1, 1, 1)
 def stopWheels():
     moveWheels(0,0,0,0)
 
@@ -370,15 +434,18 @@ def convertToBodyCoordinatesFromSpaceCoordinates(x, y, z):
     Function communicates with vrep to retrieve data on detected objects, transforms to body coordinates
     and returns yaw and pose
 '''
-def detectCube(clientID,proxSensor,bodyHandle):
-    e,prox_body_p = vrep.simxGetObjectPosition(clientID, proxSensor, bodyHandle, vrep.simx_opmode_streaming)
+def detectCube():
+    global clientID
+    global proxSensor
+    global bodyHandle
+    e,prox_body_p = vrep.simxGetObjectPosition(clientID, proxSensor, bodyHandle, vrep.simx_opmode_oneshot_wait)
     #print("prox_body_p = " + str(prox_body_p))
     T_body_sensor = np.array([[0, -1, 0, prox_body_p[0]], 
                               [1, 0, 0,  prox_body_p[1]],
                               [0, 0, 1,  prox_body_p[2]],
                               [0,0,0,1]])
 
-    e,detectionState,detectedPoint,detectedObjectHandle,detectedSurfaceNormalVector=vrep.simxReadProximitySensor(clientID,proxSensor,vrep.simx_opmode_streaming)
+    e,detectionState,detectedPoint,detectedObjectHandle,detectedSurfaceNormalVector=vrep.simxReadProximitySensor(clientID,proxSensor,vrep.simx_opmode_oneshot_wait)
     #print("State: " + str(detectionState))
     #print("Point: " + str(detectedPoint))
     #print("Norm Vector: " + str(detectedSurfaceNormalVector))
@@ -400,7 +467,7 @@ def detectCube(clientID,proxSensor,bodyHandle):
         #detectedPoint[0] += 0.02*np.sin(yaw)
         #detectedPoint[2] += 0.02*np.cos(yaw)
             
-    e,detect_pose = vrep.simxGetObjectPosition(clientID, detectedObjectHandle, proxSensor, vrep.simx_opmode_streaming)
+    e,detect_pose = vrep.simxGetObjectPosition(clientID, detectedObjectHandle, proxSensor, vrep.simx_opmode_oneshot_wait)
     
     pose = np.array([[detect_pose[0]], [detect_pose[1]], [detect_pose[2]], [1]])
     body_pose = np.dot(T_body_sensor,pose)
@@ -453,11 +520,10 @@ input: clientID, vsHandle
 output: blobDist(float), blobCenter(np.array(x, y ,z))
 '''
 def getCubeProperties(clientID, vsHandle):
-    moveArm(transformation_data.front_pose)
+    #moveArm(transformation_data.front_pose, [0,3,2,1,4])
     err, resolution, image = vrep.simxGetVisionSensorImage(clientID, vsHandle, 0, vrep.simx_opmode_buffer)
     
     if err == vrep.simx_return_ok:  #checking if there is an error
-        print("Image GOOD!!!")
         
         # Reshaping the imgae to the right np array
         img = np.array(image,dtype=np.uint8)
@@ -465,7 +531,7 @@ def getCubeProperties(clientID, vsHandle):
         img = np.flip(img, 1)
         img = np.flip(img)
 
-        # Define a mask using the lower and upper bounds of the orange color
+        # Define a mask using the lower and upper bounds of the green color
         lower =(150, 200, 0)
         upper = (180, 255, 200)
         mask_image = cv2.inRange(img, lower, upper)
@@ -478,19 +544,18 @@ def getCubeProperties(clientID, vsHandle):
         # find coordinate and size of the blob. The criteria is only one blob
         blobCenter, blobSize = [], 0
         if len(keypoints) == 1:
-            print('Detecting one blob!')
+            #print('Detecting one blob!')
             blobCenter = np.array(keypoints[0].pt)
             blobSize = keypoints[0].size
 
         blobDist = getBlobDist(blobSize)
         
-        '''
         # getting position of the vision sensor/cube and the distance between the two
         e, vsPose = vrep.simxGetObjectPosition(clientID, vsHandle, -1, vrep.simx_opmode_streaming)
-        e, cubePose = vrep.simxGetObjectPosition(clientID, cubeHandle, -1, vrep.simx_opmode_streaming)
-        disVsCube = np.sqrt(np.sum((np.array(vsPose) - np.array(cubePose))**2, axis = 0))
-        print(disVsCube)
-        
+        #e, cubePose = vrep.simxGetObjectPosition(clientID, cubeHandle, -1, vrep.simx_opmode_streaming)
+        #disVsCube = np.sqrt(np.sum((np.array(vsPose) - np.array(cubePose))**2, axis = 0))
+        #print(disVsCube)
+        '''
         # Draw detected blobs as red circles.
         im_with_keypoints = cv2.drawKeypoints(img, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
@@ -498,8 +563,6 @@ def getCubeProperties(clientID, vsHandle):
         cv2.imshow("Mask Window", mask_image)
         cv2.imshow("Blob Centroids", im_with_keypoints)
         cv2.imshow('Image',img)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
         '''
         
         return blobDist, blobCenter
@@ -508,10 +571,31 @@ def getCubeProperties(clientID, vsHandle):
         pass
     else:
       print(err)
-    
-    
-    
-    
+'''
+Deposits cube to the bin.
+Assumes that we are already holding a cube
+'''
+def returnCube():
+    bin = transformation_data.bin_coords
+    home = transformation_data.home_coords
+    back_arm = transformation_data.plate_pose
+    front_arm = transformation_data.front_pose
+
+    #Move to the bin
+    moveArm(back_arm, [])
+    moveToDestination(bin)
+
+    #Deposit the cube into the bin
+    moveArm(front_arm, [])
+    release()
+    time.sleep(0.5)
+
+    #move away from the bin
+    moveArm(back_arm, [])
+    moveBackward()
+    time.sleep(1)
+    stopWheels()
+
 
 def main():
     # global variables
@@ -521,6 +605,8 @@ def main():
     global MAX_FORCE
     global tcp_handle
     global bodyHandle
+    global proxSensor
+    global holdingCube
     # get transformation data
     M  = transformation_data.M
     S  = transformation_data.S
@@ -561,32 +647,13 @@ def main():
         vrep.simxGetObjectOrientation(clientID, bodyHandle, -1, vrep.simx_opmode_streaming)
         vrep.simxGetObjectPosition(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
         vrep.simxGetObjectOrientation(clientID, bodyHandle, -1, vrep.simx_opmode_buffer)
-
-
-        
-        '''
-        Access Vision_sensor to locate block
-        References:
-        http://forum.coppeliarobotics.com/viewtopic.php?f=9&t=7012#p27785
-        https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.stats.linregress.html
-        '''
-        
-        
-        
-        #Get the handle of the vision sensor
-        print('Vision Sensor object handling')
+        #IMAGE PROCESSING
         res, vsHandle = vrep.simxGetObjectHandle(clientID, 'Vision_sensor', vrep.simx_opmode_oneshot_wait)
-        res, cubeHandle = vrep.simxGetObjectHandle(clientID, 'Rectangle16', vrep.simx_opmode_oneshot_wait)
-        print('Getting first image')
+        res, bsHandle = vrep.simxGetObjectHandle(clientID, 'Has_Block_sensor', vrep.simx_opmode_oneshot_wait)
+        res, cubeHandle = vrep.simxGetObjectHandle(clientID, 'Rectangle14', vrep.simx_opmode_oneshot_wait)
         err, resolution, image = vrep.simxGetVisionSensorImage(clientID, vsHandle, 0, vrep.simx_opmode_streaming)
-        while (vrep.simxGetConnectionId(clientID) != -1):
-            blobDist, blobCenter = getCubeProperties(clientID, vsHandle)
-            print(blobDist)
-            
-            
-            
+        err, resolution, image = vrep.simxGetVisionSensorImage(clientID, bsHandle, 0, vrep.simx_opmode_streaming)
         
-       
         #TESTING if we can move the arm between two poses
         '''
         DO NOT DELETE
@@ -596,11 +663,78 @@ def main():
         time.sleep(2)
 
 
-
-
-        # TESTING
-        moveToDestination([1.4, -0.97, 0.5])
         stopWheels()
+        moveArm(transformation_data.plate_pose,[])
+        release()
+        ### INSERT YOUR CODE HERE ###
+
+        # MEANS NO CUBE -0.046000331640244
+        '''
+        while True:
+            grab()
+            release()
+        '''
+
+        continue_running = True
+        while continue_running: # This will happen as long as the robot is alive
+            print("Start of main loop")
+            start_time = time.time()
+            # STATE 1
+            #Search for a cube
+            dist, blob_center = getCubeProperties(clientID, vsHandle)
+            while(dist < 0):
+                turnRight(0)
+                #print(dist)
+                dist, blob_center = getCubeProperties(clientID, vsHandle)
+                print(time.time() - start_time)
+                if(time.time() - start_time > 15): #If we've been searching for 15 seconds
+                    #Give up
+                    continue_running = False
+                    break
+            stopWheels()
+
+            if(not continue_running):
+                print("Giving up...")
+                break
+
+            # STATE 2
+            #Navigate to cube
+            print("Navigating to cube")
+            while(len(blob_center) != 0 and blob_center[0] > 140): # MOVE RIGHT UNTIL BLOCK IS CENTERED
+                moveRight()
+                dist, blob_center = getCubeProperties(clientID, vsHandle)
+            while(len(blob_center) != 0 and blob_center[0] < 110): # MOVE LEFT UNTIL BLOCK IS CENTERED
+                moveLeft()
+                dist, blob_center = getCubeProperties(clientID, vsHandle)
+            while(len(blob_center) != 0 and blob_center[1] < 90): # MOVE FORWARD UNTIL BLOCK IS WITHIN REACH
+                moveForward()
+                dist, blob_center = getCubeProperties(clientID, vsHandle)
+            stopWheels()
+
+            # STATE 3
+            #Grab cube
+            #while True:
+
+            print("Grabbing cube")
+            detectionState, yaw, cube_pose  = detectCube()
+            grabCube_success = grabCube(cube_pose, yaw)
+            
+            # Check if we have cube
+            if(grabCube_success):
+                time.sleep(1)
+                dist, blob_center = getCubeProperties(clientID, bsHandle)
+                if(len(blob_center) == 0):
+                    grabCube_success = False
+            print("Successfully grabbed cube: " + str(grabCube_success))
+            #STATE 4
+            #Move to destination
+            if(grabCube_success):
+                returnCube()
+            release()
+        time.sleep(5)
+            
+            
+        
         # Now close the connection to V-REP:
         vrep.simxFinish(clientID)
     else:

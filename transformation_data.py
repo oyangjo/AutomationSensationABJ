@@ -153,3 +153,6 @@ plate_pose = np.radians([0, 30.9, 52.4, 72.7, 0])
 
 
 front_pose = np.radians([0, -30.0, -40.0, -50.0, 0])
+
+bin_coords = [1.425, -0.950, 0.050]
+home_coords = [1.65, 1.22, 0]
