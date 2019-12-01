@@ -132,7 +132,8 @@ def findThetas(end_pose, yaw):
     theta1 = -np.arctan2(r,s) - np.arctan2(L3*np.sin(theta2), L2 + L3*np.cos(theta2))
 
     theta3 = -theta1 -theta2 -np.pi    
-    theta4 = theta0 - yaw
+    #theta4 = theta0 - yaw
+    theta4 = 0
     
     thetaList = [theta0, theta1,theta2,theta3,theta4]
     
@@ -205,9 +206,9 @@ def grab():
     global holdingCube
     global clientID
     j, u, n, grabRet, k = vrep.simxCallScriptFunction(clientID, "youBot", vrep.sim_scripttype_childscript, "sysCall_test_close", [0], [0], '', '', vrep.simx_opmode_blocking)
-    print(grabRet[0])
-    if(float(grabRet[0]) < -0.0):
-            holdingCube = True
+    #print(grabRet[0])
+    #if(float(grabRet[0]) < -0.0):
+    #        holdingCube = True
     time.sleep(1)
 
 def release():
@@ -433,6 +434,7 @@ def convertToBodyCoordinatesFromSpaceCoordinates(x, y, z):
 '''
     Function communicates with vrep to retrieve data on detected objects, transforms to body coordinates
     and returns yaw and pose
+    output: detectionState (Bool), yaw (float, -45, 45), cube_pose (list)
 '''
 def detectCube():
     global clientID
@@ -495,7 +497,26 @@ def blob_search_init():
 
         blob_detector = cv2.SimpleBlobDetector_create(params)
         return blob_detector
+'''
+initialize all parameters for blob detection
+'''
+def rear_blob_search_init():
+        params = cv2.SimpleBlobDetector_Params()
+        # Filter by Area.
+        params.filterByArea = True
+        params.minArea = 15
+        # Filter by Circularity
+        params.filterByCircularity = True
+        params.minCircularity = 0.2
+        # Filter by Inerita
+        params.filterByInertia = True
+        params.minInertiaRatio = 0.3
+        # Filter by Convexity
+        params.filterByConvexity = True
+        params.minConvexity = 0.3
 
+        blob_detector = cv2.SimpleBlobDetector_create(params)
+        return blob_detector
 '''
 Get the distance between vision sensor and cube
 Have linear regression with x and 1/y
@@ -556,15 +577,79 @@ def getCubeProperties(clientID, vsHandle):
         #disVsCube = np.sqrt(np.sum((np.array(vsPose) - np.array(cubePose))**2, axis = 0))
         #print(disVsCube)
         '''
+        '''
         # Draw detected blobs as red circles.
+        '''
         im_with_keypoints = cv2.drawKeypoints(img, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-
+        
         # display images
         cv2.imshow("Mask Window", mask_image)
         cv2.imshow("Blob Centroids", im_with_keypoints)
         cv2.imshow('Image',img)
         '''
         
+        return blobDist, blobCenter
+    elif err == vrep.simx_return_novalue_flag:
+        print("no image yet")
+        pass
+    else:
+      print(err)
+
+'''
+Get cube's properties: the distance and center of the cube
+use open cv to detect blob's size and certer
+Call getBlobDist to convert size to distance of blob
+input: clientID, vsHandle
+output: blobDist(float), blobCenter(np.array(x, y ,z))
+'''
+def getRearCubeProperties(clientID, vsHandle):
+    #moveArm(transformation_data.front_pose, [0,3,2,1,4])
+    err, resolution, image = vrep.simxGetVisionSensorImage(clientID, vsHandle, 0, vrep.simx_opmode_buffer)
+    
+    if err == vrep.simx_return_ok:  #checking if there is an error
+        
+        # Reshaping the imgae to the right np array
+        img = np.array(image,dtype=np.uint8)
+        img.resize([resolution[1],resolution[0],3])   #this image is upsidedown
+        img = np.flip(img, 1)
+        img = np.flip(img)
+        img = img[:, 80:160]
+
+        # Define a mask using the lower and upper bounds of the green color
+
+        lower =(120, 200, 0)
+        upper = (220, 255, 200)
+        mask_image = cv2.inRange(img, lower, upper)
+        
+        # find centroid of the blobs
+        blob_detector = rear_blob_search_init()
+        reverse_mask = 255 - mask_image
+        keypoints = blob_detector.detect(reverse_mask)
+        
+        # find coordinate and size of the blob. The criteria is only one blob
+        blobCenter, blobSize = [], 0
+        if len(keypoints) == 1:
+            #print('Detecting one blob!')
+            blobCenter = np.array(keypoints[0].pt)
+            blobSize = keypoints[0].size
+
+        blobDist = getBlobDist(blobSize)
+        
+        # getting position of the vision sensor/cube and the distance between the two
+        e, vsPose = vrep.simxGetObjectPosition(clientID, vsHandle, -1, vrep.simx_opmode_streaming)
+        #e, cubePose = vrep.simxGetObjectPosition(clientID, cubeHandle, -1, vrep.simx_opmode_streaming)
+        #disVsCube = np.sqrt(np.sum((np.array(vsPose) - np.array(cubePose))**2, axis = 0))
+        #print(disVsCube)
+        '''
+        '''
+        # Draw detected blobs as red circles.
+        im_with_keypoints = cv2.drawKeypoints(img, keypoints, np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        
+        # display images
+        cv2.imshow("Mask Window", mask_image)
+        cv2.imshow("Blob Centroids", im_with_keypoints)
+        cv2.imshow('Image',img)
+        k=cv2.waitKey(10) & 0XFF
         return blobDist, blobCenter
     elif err == vrep.simx_return_novalue_flag:
         print("no image yet")
@@ -673,32 +758,36 @@ def main():
         while True:
             grab()
             release()
+        
         '''
-
+         
+        
         continue_running = True
         while continue_running: # This will happen as long as the robot is alive
+            
             print("Start of main loop")
             start_time = time.time()
             # STATE 1
             #Search for a cube
             dist, blob_center = getCubeProperties(clientID, vsHandle)
             while(dist < 0):
-                turnRight(0)
+                turnRight(0)    #spins
                 #print(dist)
                 dist, blob_center = getCubeProperties(clientID, vsHandle)
-                print(time.time() - start_time)
-                if(time.time() - start_time > 15): #If we've been searching for 15 seconds
+                if(time.time() - start_time > 10): #If we've been searching for 15 seconds
                     #Give up
                     continue_running = False
                     break
             stopWheels()
 
-            if(not continue_running):
+            if(not continue_running):   #no cubes found by front camera
                 print("Giving up...")
                 break
 
             # STATE 2
             #Navigate to cube
+            # TODO: instead of drifting, we want rotation so that it is a lot more natural
+            # could look at the move to position function
             print("Navigating to cube")
             while(len(blob_center) != 0 and blob_center[0] > 140): # MOVE RIGHT UNTIL BLOCK IS CENTERED
                 moveRight()
@@ -713,18 +802,19 @@ def main():
 
             # STATE 3
             #Grab cube
-            #while True:
-
             print("Grabbing cube")
             detectionState, yaw, cube_pose  = detectCube()
             grabCube_success = grabCube(cube_pose, yaw)
             
             # Check if we have cube
             if(grabCube_success):
-                time.sleep(1)
-                dist, blob_center = getCubeProperties(clientID, bsHandle)
+                time.sleep(3)
+                print('---------Start Debugging!!!!!!!!---------')
+                dist, blob_center = getRearCubeProperties(clientID, bsHandle)
                 if(len(blob_center) == 0):
                     grabCube_success = False
+                
+
             print("Successfully grabbed cube: " + str(grabCube_success))
             #STATE 4
             #Move to destination
