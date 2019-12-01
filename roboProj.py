@@ -672,6 +672,7 @@ def returnCube():
 
     #Deposit the cube into the bin
     moveArm(front_arm, [])
+    time.sleep(1.5)
     release()
     time.sleep(0.5)
 
@@ -808,8 +809,8 @@ def main():
             
             # Check if we have cube
             if(grabCube_success):
-                time.sleep(3)
-                print('---------Start Debugging!!!!!!!!---------')
+                time.sleep(0.5)
+                #print('---------Start Debugging!!!!!!!!---------')
                 dist, blob_center = getRearCubeProperties(clientID, bsHandle)
                 if(len(blob_center) == 0):
                     grabCube_success = False
